@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "App",
-  description: "Next.js app",
+  title: "FocusHub",
+  description: "Landing page de FocusHub enfocada en concentración profunda.",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">{children}</body>

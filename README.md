@@ -1,85 +1,42 @@
-# App Setup
+# App
 
-- `backend`: FastAPI API
-- `frontend`: Next.js app
+Repo with:
+
+- `frontend`: Next.js
+- `backend`: FastAPI
 
 ## Requirements
 
-- Python 3.12 or compatible
-- Node.js 20 or newer
+- Node.js 20+
 - npm
+- Python 3.11+
 
-## Backend
+## Setup
 
-### 1. Go to the backend folder
+| Command                                                                                               | Description                                        |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `cd frontend && npm install`                                                                          | Install frontend dependencies                      |
+| `cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt` | Create backend virtualenv and install dependencies |
 
-```bash
-cd backend
-```
+## Run
 
-### 2. Create a virtual environment
+| Command                                                                | Description                                   |
+| ---------------------------------------------------------------------- | --------------------------------------------- |
+| `cd frontend && npm run dev`                                           | Start the frontend on `http://localhost:3000` |
+| `cd backend && source .venv/bin/activate && uvicorn main:app --reload` | Start the backend on `http://127.0.0.1:8000`  |
 
-```bash
-python3 -m venv .venv
-```
+## Checks
 
-### 3. Activate the virtual environment
+Run these from the repo root.
 
-macOS/Linux:
+| Command               | Description                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| `make check`          | Run all frontend and backend checks                                                    |
+| `make check-frontend` | Run frontend install, lint, type-check, tests if present, and build                    |
+| `make check-backend`  | Run backend venv setup, install, lint if available, tests if present, and import check |
 
-```bash
-source .venv/bin/activate
-```
+## Recommended Flow
 
-Windows PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-### 4. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. Run the backend
-
-```bash
-uvicorn main:app --reload
-```
-
-The backend will run at:
-
-`http://127.0.0.1:8000`
-
-## Frontend
-
-### 1. Go to the frontend folder
-
-```bash
-cd frontend
-```
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Run the frontend
-
-```bash
-npm run dev
-```
-
-The frontend will run at:
-
-`http://localhost:3000`
-
-## Running Both
-
-Use two terminals:
-
-1. Start the backend from `backend/`
-2. Start the frontend from `frontend/`
+1. Make your changes.
+2. Run `make check`.
+3. Commit and push if it passes.
