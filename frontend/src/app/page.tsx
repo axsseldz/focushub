@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { Manrope } from "next/font/google";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -197,14 +198,6 @@ export default function Home() {
             ref={heroCopyRef}
             className="mx-auto max-w-4xl text-center"
           >
-            <div className="flex justify-center">
-              <span className="relative inline-flex items-center rounded-full border border-sky-100 bg-white/85 px-5 py-2 text-sm font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.05)] backdrop-blur">
-                <span className="absolute inset-x-6 bottom-0 h-px bg-[linear-gradient(90deg,rgba(125,211,252,0),rgba(125,211,252,0.9),rgba(125,211,252,0))]" />
-                <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_52%,#38bdf8_100%)] bg-clip-text tracking-[-0.04em] text-transparent">
-                  FocusHub
-                </span>
-              </span>
-            </div>
             <h1 className="mt-6 text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 sm:text-6xl lg:text-7xl">
               Entra en estado de focus.
             </h1>
@@ -216,12 +209,12 @@ export default function Home() {
               tranquilo para que avances con claridad en tu trabajo cognitivo.
             </p>
             <div className="mt-10 flex justify-center">
-              <a
-                href="#inicio"
+              <Link
+                href="/dashboard"
                 className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
               >
                 Probar FocusHub
-              </a>
+              </Link>
             </div>
             <p className="mt-4 text-sm text-slate-500">
               Lectura inmersiva disponible. Escritura próximamente.
