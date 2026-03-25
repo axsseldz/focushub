@@ -150,10 +150,10 @@ export function DashboardView() {
                 className="border-b border-slate-200/80 px-6 py-7 sm:px-8 sm:py-8"
               >
                 <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-4xl">
-                  Panel de enfoque
+                  Panel de focus
                 </h1>
                 <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                  Selecciona una actividad para entrar en estado de flow.
+                  Selecciona una actividad para entrar en estado de focus.
                 </p>
               </header>
 

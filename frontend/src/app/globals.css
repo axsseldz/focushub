@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+.reading-mode-uploader,
+.reading-mode-uploader lr-file-uploader-regular,
+.reading-mode-uploader lr-upload-ctx-provider {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}

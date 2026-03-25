@@ -18,9 +18,12 @@ export function Sidebar() {
   return (
     <aside className="flex h-full flex-col bg-slate-50/85 px-4 py-5 sm:px-5 lg:px-6 lg:py-7">
       <div>
-        <p className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-lg font-semibold tracking-[-0.04em] text-transparent sm:text-xl">
+        <Link
+          href="/"
+          className="inline-block bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-lg font-semibold tracking-[-0.04em] text-transparent transition-opacity hover:opacity-85 sm:text-xl"
+        >
           FocusHub
-        </p>
+        </Link>
       </div>
 
       <nav

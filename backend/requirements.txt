@@ -3,3 +3,5 @@ uvicorn==0.42.0
 pytest
 httpx
 ruff
+sqlalchemy
+pydantic
