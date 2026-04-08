@@ -29,8 +29,8 @@ export function ActivityCard({
   title,
 }: ActivityCardProps) {
   const cardClasses = disabled
-    ? "border-slate-200/85 bg-slate-50/80 text-slate-500"
-    : "border-slate-200/80 bg-white text-slate-950";
+    ? "border-slate-200/85 bg-slate-50/80 text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-500"
+    : "border-slate-200/80 bg-white text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-50";
 
   return (
     <article
@@ -48,7 +48,7 @@ export function ActivityCard({
         <div
           data-disabled-haze
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-[1.75rem] bg-white/25 opacity-25 backdrop-blur-[1px]"
+          className="pointer-events-none absolute inset-0 rounded-[1.75rem] bg-white/25 opacity-25 backdrop-blur-[1px] dark:bg-slate-950/25"
         />
       ) : null}
 
@@ -59,14 +59,14 @@ export function ActivityCard({
             className={[
               "flex h-11 w-11 items-center justify-center rounded-2xl border text-slate-900",
               disabled
-                ? "border-slate-200/80 bg-white/70 text-slate-400"
-                : "border-slate-200/80 bg-slate-50",
+                ? "border-slate-200/80 bg-white/70 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-600"
+                : "border-slate-200/80 bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
             ].join(" ")}
           >
             {icon}
           </div>
           {label ? (
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-500">
               {label}
             </span>
           ) : null}
@@ -77,7 +77,7 @@ export function ActivityCard({
             className={[
               "font-semibold tracking-[-0.04em]",
               compact ? "text-xl" : "text-2xl",
-              disabled ? "text-slate-700" : "text-slate-950",
+              disabled ? "text-slate-700 dark:text-slate-500" : "text-slate-950 dark:text-slate-50",
             ].join(" ")}
           >
             {title}
@@ -86,7 +86,7 @@ export function ActivityCard({
             className={[
               "mt-3 leading-7",
               compact ? "text-sm" : "text-base",
-              disabled ? "text-slate-500" : "text-slate-600",
+              disabled ? "text-slate-500 dark:text-slate-600" : "text-slate-600 dark:text-slate-400",
             ].join(" ")}
           >
             {description}
@@ -95,14 +95,14 @@ export function ActivityCard({
 
         <div className={compact ? "mt-6" : "mt-auto pt-9"}>
           {disabled ? (
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-500">
               {label ?? "Próximamente"}
             </span>
           ) : (
             <Link
               href={actionHref ?? "/lectura"}
               data-card-action
-              className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
+              className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             >
               {actionLabel}
             </Link>
@@ -178,13 +178,7 @@ export function FocusIcon() {
         strokeLinecap="round"
         strokeWidth="1.5"
       />
-      <circle
-        cx="12"
-        cy="12"
-        r="3.25"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
+      <circle cx="12" cy="12" r="3.25" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
 }

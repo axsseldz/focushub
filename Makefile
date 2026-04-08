@@ -39,7 +39,9 @@ check-frontend: frontend-install
 
 backend-venv:
 	$(call step,Backend: create virtual environment)
-	@cd backend && python3 -m venv .venv
+	@cd backend && [ -d .venv ] || python3 -m venv .venv || \
+		(python3 -m venv --without-pip .venv && \
+		 curl -sS https://bootstrap.pypa.io/get-pip.py | .venv/bin/python3)
 
 backend-install: backend-venv
 	$(call step,Backend: install dependencies)

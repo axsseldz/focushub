@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/*
+  Class-based dark mode: dark: utilities apply whenever any ancestor
+  has class="dark" (we add it to <html> via ThemeProvider).
+  @custom-variant replaces the built-in media-query dark variant.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 .reading-mode-uploader,
 .reading-mode-uploader lr-file-uploader-regular,
 .reading-mode-uploader lr-upload-ctx-provider {

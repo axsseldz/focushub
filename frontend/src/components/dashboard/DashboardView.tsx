@@ -9,6 +9,7 @@ import {
   WritingIcon,
 } from "@/components/dashboard/ActivityCard";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -129,17 +130,17 @@ export function DashboardView() {
 
   return (
     <main
-      className={`${manrope.className} min-h-screen bg-white text-slate-950`}
+      className={`${manrope.className} min-h-screen bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50`}
     >
       <div
         ref={rootRef}
         className="h-screen w-full"
       >
-        <div className="h-full overflow-hidden bg-white">
+        <div className="h-full overflow-hidden bg-white dark:bg-slate-950">
           <div className="grid h-full min-h-screen lg:grid-cols-[248px_minmax(0,1fr)]">
             <div
               ref={sidebarRef}
-              className="border-b border-slate-200/80 lg:border-b-0 lg:border-r"
+              className="border-b border-slate-200/80 dark:border-slate-800 lg:border-b-0 lg:border-r"
             >
               <Sidebar />
             </div>
@@ -147,14 +148,21 @@ export function DashboardView() {
             <div className="min-w-0">
               <header
                 ref={headerRef}
-                className="border-b border-slate-200/80 px-6 py-7 sm:px-8 sm:py-8"
+                className="border-b border-slate-200/80 px-6 py-7 dark:border-slate-800 sm:px-8 sm:py-8"
               >
-                <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-slate-950 sm:text-4xl">
-                  Panel de focus
-                </h1>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                  Selecciona una actividad para entrar en estado de focus.
-                </p>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-slate-950 dark:text-slate-50 sm:text-4xl">
+                      Panel de focus
+                    </h1>
+                    <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-400 sm:text-lg">
+                      Selecciona una actividad para entrar en estado de focus.
+                    </p>
+                  </div>
+                  <div className="mt-1 shrink-0">
+                    <ThemeToggle />
+                  </div>
+                </div>
               </header>
 
               <section
@@ -166,11 +174,11 @@ export function DashboardView() {
                   <div>
                     <h2
                       id="actividades-title"
-                      className="text-lg font-semibold tracking-[-0.03em] text-slate-950"
+                      className="text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50"
                     >
                       Actividades
                     </h2>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">
                       Herramientas disponibles.
                     </p>
                   </div>

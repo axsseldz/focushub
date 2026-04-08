@@ -315,24 +315,24 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
     <div
       role="region"
       aria-label="Vista de cámara para lectura inteligente"
-      className="fixed bottom-6 right-6 z-50 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)]"
+      className="fixed bottom-6 right-6 z-50 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900"
     >
       {/* Loading */}
       {status === "loading" && (
-        <div className="flex h-32 w-44 flex-col items-center justify-center gap-2 bg-slate-50">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
-          <span className="text-[11px] text-slate-400">Cargando modelo…</span>
+        <div className="flex h-32 w-44 flex-col items-center justify-center gap-2 bg-slate-50 dark:bg-slate-800">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600 dark:border-slate-600 dark:border-t-slate-300" />
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">Cargando modelo…</span>
         </div>
       )}
 
       {/* Error */}
       {status === "error" && (
-        <div className="flex h-32 w-44 flex-col items-center justify-center gap-1.5 bg-red-50 px-3 text-center">
+        <div className="flex h-32 w-44 flex-col items-center justify-center gap-1.5 bg-red-50 px-3 text-center dark:bg-red-950/50">
           <CameraOffIcon />
-          <span className="text-[11px] font-medium leading-tight text-red-600">
+          <span className="text-[11px] font-medium leading-tight text-red-600 dark:text-red-400">
             Sin acceso a cámara
           </span>
-          <span className="text-[10px] leading-tight text-red-400">
+          <span className="text-[10px] leading-tight text-red-400 dark:text-red-500">
             Verifica los permisos del navegador
           </span>
         </div>
@@ -353,12 +353,12 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
       {status === "active" && videoHidden && (
         <div className="flex items-center gap-2 px-3 py-2">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-          <span className="text-[11px] font-medium text-slate-600">Lectura activa</span>
+          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Gestos activos</span>
           <button
             type="button"
             onClick={() => setVideoHidden(false)}
             aria-label="Mostrar cámara"
-            className="ml-1 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="ml-1 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
           >
             <EyeIcon />
           </button>
@@ -370,7 +370,7 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
         <div className="absolute left-2 top-2 flex items-center gap-1">
           <div className="flex items-center gap-1 rounded-full bg-slate-900/60 px-2 py-0.5 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            <span className="text-[10px] font-medium text-white">Activo</span>
+            <span className="text-[10px] font-medium text-white">Gestos</span>
           </div>
           <button
             type="button"
@@ -387,16 +387,16 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
       {status === "active" && (
         <div
           ref={indicatorWrapRef}
-          className="hidden border-t border-slate-100 bg-white/95"
+          className="hidden border-t border-slate-100 bg-white/95 dark:border-slate-700 dark:bg-slate-900/95"
         >
           <div className="px-2 py-1.5 text-center">
             <span
               ref={indicatorTextRef}
-              className="text-[10px] font-medium tabular-nums text-slate-600"
+              className="text-[10px] font-medium tabular-nums text-slate-600 dark:text-slate-300"
             />
           </div>
           {/* Progress bar */}
-          <div className="h-[3px] w-full bg-slate-100">
+          <div className="h-[3px] w-full bg-slate-100 dark:bg-slate-700">
             <div
               ref={progressBarRef}
               className="h-full bg-emerald-400"

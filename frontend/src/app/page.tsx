@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Manrope } from "next/font/google";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -165,8 +166,12 @@ export default function Home() {
   return (
     <main
       id="inicio"
-      className={`${manrope.className} relative overflow-x-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_48%,#f4f7fb_100%)] text-slate-950`}
+      className={`${manrope.className} relative overflow-x-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_48%,#f4f7fb_100%)] text-slate-950 dark:[background-image:none] dark:bg-slate-950 dark:text-slate-50`}
     >
+      {/* Theme toggle — fixed top-right on every viewport */}
+      <div className="fixed right-4 top-4 z-50">
+        <ThemeToggle />
+      </div>
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -198,10 +203,10 @@ export default function Home() {
             ref={heroCopyRef}
             className="mx-auto max-w-4xl text-center"
           >
-            <h1 className="mt-6 text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 sm:text-6xl lg:text-7xl">
+            <h1 className="mt-6 text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-slate-50 sm:text-6xl lg:text-7xl">
               Entra en estado de focus.
             </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+            <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-400 sm:text-xl">
               <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text font-semibold text-transparent">
                 FocusHub
               </span>{" "}
@@ -211,12 +216,12 @@ export default function Home() {
             <div className="mt-10 flex justify-center">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
               >
                 Probar FocusHub
               </Link>
             </div>
-            <p className="mt-4 text-sm text-slate-500">
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-500">
               Lectura inmersiva disponible. Escritura próximamente.
               Notificaciones en pausa.
             </p>
@@ -286,20 +291,20 @@ function FeatureCard({
 }: FeatureCardProps) {
   const statusClasses =
     tone === "soon"
-      ? "border-sky-100 bg-sky-50/80 text-sky-700"
-      : "border-emerald-100 bg-emerald-50/80 text-emerald-700";
+      ? "border-sky-100 bg-sky-50/80 text-sky-700 dark:border-sky-900 dark:bg-sky-900/30 dark:text-sky-400"
+      : "border-emerald-100 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-400";
 
   return (
     <article
       ref={refProp}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="rounded-[1.8rem] border border-slate-200/70 bg-white/78 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur"
+      className="rounded-[1.8rem] border border-slate-200/70 bg-white/78 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur dark:border-slate-800 dark:bg-slate-900"
     >
       <div className="flex items-start justify-between gap-4">
         <div
           data-icon-shell
-          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-800 dark:[background-image:none] dark:text-slate-200"
         >
           {icon}
         </div>
@@ -309,13 +314,13 @@ function FeatureCard({
           {status}
         </span>
       </div>
-      <h3 className="mt-6 text-2xl font-semibold tracking-[-0.04em] text-slate-950">
+      <h3 className="mt-6 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-50">
         {title}
       </h3>
-      <p className="mt-3 max-w-lg text-base leading-7 text-slate-600">
+      <p className="mt-3 max-w-lg text-base leading-7 text-slate-600 dark:text-slate-400">
         {description}
       </p>
-      <p className="mt-4 text-sm font-medium text-slate-500">{note}</p>
+      <p className="mt-4 text-sm font-medium text-slate-500 dark:text-slate-500">{note}</p>
     </article>
   );
 }

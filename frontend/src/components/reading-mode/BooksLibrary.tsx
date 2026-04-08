@@ -25,11 +25,11 @@ export function BooksLibrary({
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={index}
-            className="rounded-[1.75rem] border border-slate-200/80 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)]"
+            className="rounded-[1.75rem] border border-slate-200/80 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900"
           >
-            <div className="aspect-3/4 animate-pulse rounded-2xl bg-slate-100" />
-            <div className="mt-4 h-4 w-2/3 animate-pulse rounded-full bg-slate-100" />
-            <div className="mt-2 h-3 w-1/3 animate-pulse rounded-full bg-slate-100" />
+            <div className="aspect-3/4 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
+            <div className="mt-4 h-4 w-2/3 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+            <div className="mt-2 h-3 w-1/3 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
           </div>
         ))}
       </div>
@@ -38,11 +38,11 @@ export function BooksLibrary({
 
   if (books.length === 0) {
     return (
-      <div className="rounded-[1.9rem] border border-dashed border-slate-200 bg-slate-50/70 px-8 py-18 text-center shadow-[0_12px_32px_rgba(15,23,42,0.03)]">
-        <p className="text-lg font-semibold tracking-[-0.03em] text-slate-950">
+      <div className="rounded-[1.9rem] border border-dashed border-slate-200 bg-slate-50/70 px-8 py-18 text-center shadow-[0_12px_32px_rgba(15,23,42,0.03)] dark:border-slate-800 dark:bg-slate-900/50">
+        <p className="text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50">
           Sube tu primer libro para comenzar a leer
         </p>
-        <p className="mt-3 text-sm leading-6 text-slate-500">
+        <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-500">
           Cuando subas un PDF, aparecerá aquí con vista previa y acceso directo
           al modo de lectura.
         </p>

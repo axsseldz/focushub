@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const sidebarItems = [
   {
@@ -16,7 +17,7 @@ const sidebarItems = [
 
 export function Sidebar() {
   return (
-    <aside className="flex h-full flex-col bg-slate-50/85 px-4 py-5 sm:px-5 lg:px-6 lg:py-7">
+    <aside className="flex h-full flex-col bg-slate-50/85 px-4 py-5 dark:bg-slate-900 sm:px-5 lg:px-6 lg:py-7">
       <div>
         <Link
           href="/"
@@ -38,7 +39,7 @@ export function Sidebar() {
             return (
               <span
                 key={item.label}
-                className={`${sharedClasses} cursor-default text-slate-400 opacity-55`}
+                className={`${sharedClasses} cursor-default text-slate-400 opacity-55 dark:text-slate-600`}
               >
                 <span className="text-current">{item.icon}</span>
                 <span>{item.label}</span>
@@ -48,8 +49,8 @@ export function Sidebar() {
 
           const itemClasses =
             item.state === "active"
-              ? `${sharedClasses} border border-slate-200 bg-white text-slate-950 shadow-[0_8px_24px_rgba(15,23,42,0.05)]`
-              : `${sharedClasses} text-slate-600 hover:bg-white hover:text-slate-950`;
+              ? `${sharedClasses} border border-slate-200 bg-white text-slate-950 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-50`
+              : `${sharedClasses} text-slate-600 hover:bg-white hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100`;
 
           return (
             <Link
@@ -63,6 +64,12 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Theme toggle at the bottom of the sidebar */}
+      <div className="mt-auto flex items-center gap-2 pt-6">
+        <ThemeToggle />
+        <span className="text-xs text-slate-400 dark:text-slate-600">Tema</span>
+      </div>
     </aside>
   );
 }
