@@ -21,7 +21,7 @@ check-frontend: frontend-install
 	$(call step,Frontend: lint)
 	@cd frontend && npm run lint
 	$(call step,Frontend: type check)
-	@cd frontend && npm run type-check
+	@cd frontend && rm -rf .next && npm run type-check
 	$(call step,Frontend: tests)
 	@cd frontend && if find . \( -path './node_modules' -o -path './.next' \) -prune -o -type f \( -name '*.test.*' -o -name '*.spec.*' \) -print | grep -q .; then \
 		if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1)"; then \
