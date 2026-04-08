@@ -120,34 +120,34 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 12 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className="flex h-screen flex-col bg-slate-50/70 dark:bg-slate-950"
+        className="flex h-screen flex-col bg-slate-50/70 dark:bg-zinc-950"
       >
         {/* ----------------------------------------------------------------
           Header
         ---------------------------------------------------------------- */}
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/92 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-6 py-4 sm:px-8">
             {/* Back button */}
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
             >
               Volver
             </button>
 
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
             >
               <DashboardIcon />
               Dashboard
             </Link>
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700" />
 
             {/* Book title */}
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50 sm:text-lg">
+            <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-lg">
               {book.filename}
             </h1>
 
@@ -159,12 +159,12 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   onClick={goToPrevPage}
                   disabled={currentPage <= 1}
                   aria-label="Página anterior"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
                   <ChevronUpIcon />
                 </button>
 
-                <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-slate-400">
+                <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-zinc-400">
                   {currentPage} / {numPages}
                 </span>
 
@@ -173,17 +173,17 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   onClick={goToNextPage}
                   disabled={currentPage >= numPages}
                   aria-label="Página siguiente"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
                   <ChevronDownIcon />
                 </button>
               </div>
             )}
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 max-sm:hidden" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
 
             {/* Feature toggles — each feature is independently enabled */}
-            <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 dark:border-zinc-700 dark:bg-zinc-800/80">
               <button
                 type="button"
                 onClick={() => setGestureEnabled((v) => !v)}
@@ -191,8 +191,8 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                 title="Navegar con gestos de mano"
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   gestureEnabled
-                    ? "bg-white text-emerald-700 shadow-sm dark:bg-slate-700 dark:text-emerald-400"
-                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    ? "bg-white text-emerald-700 shadow-sm dark:bg-zinc-700 dark:text-emerald-400"
+                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                 }`}
               >
                 <HandIcon active={gestureEnabled} />
@@ -206,8 +206,8 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                 title='Navegar con voz · di "siguiente" o "anterior"'
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   voiceEnabled
-                    ? "bg-white text-violet-700 shadow-sm dark:bg-slate-700 dark:text-violet-400"
-                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    ? "bg-white text-violet-700 shadow-sm dark:bg-zinc-700 dark:text-violet-400"
+                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                 }`}
               >
                 <MicIcon active={voiceEnabled} />
@@ -215,7 +215,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
               </button>
             </div>
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 max-sm:hidden" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
             <ThemeToggle />
           </div>
         </header>
@@ -251,7 +251,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   transition={{ duration: 0.2, ease: "easeOut" }}
                   className="flex justify-center"
                 >
-                  <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-900">
+                  <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900">
                     <Page
                       pageNumber={currentPage}
                       {...pageProp}
@@ -276,19 +276,19 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
           Bottom page navigation (convenience for mouse / touch users)
         ---------------------------------------------------------------- */}
         {isLoaded && (
-          <footer className="sticky bottom-0 z-10 border-t border-slate-200/80 bg-white/92 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+          <footer className="sticky bottom-0 z-10 border-t border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
             <div className="mx-auto flex max-w-6xl items-center justify-center gap-4 px-6 py-3">
               <button
                 type="button"
                 onClick={goToPrevPage}
                 disabled={currentPage <= 1}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 <ChevronUpIcon />
                 Anterior
               </button>
 
-              <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-500">
+              <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-zinc-500">
                 {currentPage} de {numPages}
               </span>
 
@@ -296,7 +296,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                 type="button"
                 onClick={goToNextPage}
                 disabled={currentPage >= numPages}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 Siguiente
                 <ChevronDownIcon />
@@ -329,7 +329,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 function PageSkeleton() {
   return (
     <div className="flex w-full max-w-3xl flex-col gap-5">
-      <div className="h-[70vh] animate-pulse rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900" />
+      <div className="h-[70vh] animate-pulse rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.04)] dark:border-zinc-800 dark:bg-zinc-900" />
     </div>
   );
 }

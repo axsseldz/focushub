@@ -48,17 +48,17 @@ export function ConfirmDialog({
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900"
+            className="w-full max-w-sm rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
           >
             {/* Icon */}
             <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 dark:bg-red-900/30">
               <TrashIcon />
             </div>
 
-            <h2 className="text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-50">
+            <h2 className="text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50">
               {title}
             </h2>
-            <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-zinc-400">
               {description}
             </p>
 
@@ -66,7 +66,7 @@ export function ConfirmDialog({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                className="flex-1 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
               >
                 {cancelLabel}
               </button>

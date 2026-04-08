@@ -1,6 +1,17 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useTheme } from "@/lib/theme";
+
+// Returns false during SSR and initial hydration, then true — lets us defer
+// theme-dependent content past hydration without a setState-in-effect warning.
+const emptySubscribe = () => () => {};
+const useMounted = () =>
+  useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
 /**
  * ThemeToggle
@@ -10,17 +21,32 @@ import { useTheme } from "@/lib/theme";
  */
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
+  const mounted = useMounted();
+  const isDark = mounted && theme === "dark";
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-      title={isDark ? "Modo claro" : "Modo oscuro"}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-100"
+      aria-label={
+        mounted
+          ? isDark
+            ? "Cambiar a modo claro"
+            : "Cambiar a modo oscuro"
+          : "Cambiar tema"
+      }
+      title={mounted ? (isDark ? "Modo claro" : "Modo oscuro") : "Tema"}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
     >
-      {isDark ? <SunIcon /> : <MoonIcon />}
+      {mounted ? (
+        isDark ? (
+          <SunIcon />
+        ) : (
+          <MoonIcon />
+        )
+      ) : (
+        <span aria-hidden="true" className="h-3.5 w-3.5" />
+      )}
     </button>
   );
 }

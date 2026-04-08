@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useState,
+  useEffect,
   type ReactNode,
 } from "react";
 
@@ -31,24 +32,22 @@ const ThemeContext = createContext<ThemeContextValue>({
 // Provider
 // ---------------------------------------------------------------------------
 
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  return localStorage.getItem("focushub-theme") === "dark" ? "dark" : "light";
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "light";
-    const stored = localStorage.getItem("focushub-theme") as Theme | null;
-    if (stored === "dark") {
-      document.documentElement.classList.add("dark");
-      return "dark";
-    }
-    return "light";
-  });
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((prev) => {
-      const next = prev === "light" ? "dark" : "light";
-      localStorage.setItem("focushub-theme", next);
-      document.documentElement.classList.toggle("dark", next === "dark");
-      return next;
-    });
+    const next = theme === "light" ? "dark" : "light";
+    localStorage.setItem("focushub-theme", next);
+    setTheme(next);
   };
 
   return (

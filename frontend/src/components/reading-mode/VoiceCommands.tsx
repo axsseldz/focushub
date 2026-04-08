@@ -206,7 +206,7 @@ export function VoiceCommands({
   }
 
   return (
-    <div className="fixed bottom-6 left-6 z-50 overflow-hidden rounded-2xl border border-violet-200/80 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] dark:border-violet-800/50 dark:bg-slate-900">
+    <div className="fixed bottom-6 left-6 z-50 overflow-hidden rounded-2xl border border-violet-200/80 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.10)] dark:border-violet-800/50 dark:bg-zinc-900">
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="relative flex h-2 w-2 shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-70" />

@@ -160,7 +160,7 @@ export function ReadingModeClient() {
   };
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] text-slate-950 dark:[background-image:none] dark:bg-slate-950 dark:text-slate-50">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] text-slate-950 dark:[background-image:none] dark:bg-zinc-950 dark:text-zinc-50">
       {/* Delete confirmation dialog */}
       <ConfirmDialog
         open={bookToDelete !== null}
@@ -191,19 +191,19 @@ export function ReadingModeClient() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12 sm:px-8 lg:px-10 dark:text-slate-50"
+            className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12 sm:px-8 lg:px-10 dark:text-zinc-50"
           >
             <div className="mb-8">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 <BackIcon />
                 <span>Volver</span>
               </Link>
             </div>
 
-            <header className="grid gap-8 border-b border-slate-200/80 pb-10 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+            <header className="grid gap-8 border-b border-slate-200/80 pb-10 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
               <div className="max-w-2xl">
                 <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
                   Biblioteca
@@ -214,25 +214,25 @@ export function ReadingModeClient() {
                   transition={{ duration: 0.55, delay: 0.06, ease: "easeOut" }}
                   className="mt-3 text-4xl font-semibold tracking-[-0.065em] sm:text-5xl lg:text-[3.6rem]"
                 >
-                  <span className="bg-[linear-gradient(135deg,#020617_0%,#334155_42%,#0f172a_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#f1f5f9_0%,#94a3b8_42%,#e2e8f0_100%)]">
+                  <span className="bg-[linear-gradient(135deg,#020617_0%,#334155_42%,#0f172a_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#fafafa_0%,#a1a1aa_42%,#e4e4e7_100%)]">
                     Modo Lectura
                   </span>
                 </motion.h1>
               </div>
 
-              <div className="w-full rounded-[1.75rem] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-900">
+              <div className="w-full rounded-[1.75rem] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.045)] dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium tracking-[-0.02em] text-slate-700 dark:text-slate-300">
+                  <p className="text-sm font-medium tracking-[-0.02em] text-slate-700 dark:text-zinc-300">
                     Subir libro
                   </p>
                   <ThemeToggle />
                 </div>
-                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-500">
+                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-zinc-500">
                   Agrega un libro nuevo a tu biblioteca.
                 </p>
                 <div className="mt-4">
                   <div className="relative inline-flex h-11 w-full max-w-46 overflow-hidden rounded-full">
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
                       <UploadIcon />
                       <span>Seleccionar libro</span>
                     </div>

@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   description: "Landing page de FocusHub enfocada en concentración profunda.",
 };
 
+// Runs before React hydrates so the `dark` class is already on <html>.
+// Prevents a flash of light mode and keeps SSR/CSR CSS in sync.
+const themeInitScript = `(function(){try{if(localStorage.getItem("focushub-theme")==="dark"){document.documentElement.classList.add("dark");}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -18,7 +22,10 @@ export default function RootLayout({
       className="h-full antialiased"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-white dark:bg-slate-950">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full flex flex-col bg-white dark:bg-zinc-950">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
