@@ -12,6 +12,7 @@ class File(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     file_url: Mapped[str] = mapped_column(String, nullable=False)
     file_name: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

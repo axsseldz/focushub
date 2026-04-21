@@ -7,17 +7,21 @@ import type { Book } from "@/types/book";
 type BooksLibraryProps = {
   books: Book[];
   deletingBookId?: string | null;
+  renamingBookId?: string | null;
   isLoading: boolean;
   onDeleteBook: (book: Book) => void;
   onOpenBook: (book: Book) => void;
+  onRenameBook: (book: Book, nextTitle: string) => Promise<void> | void;
 };
 
 export function BooksLibrary({
   books,
   deletingBookId = null,
+  renamingBookId = null,
   isLoading,
   onDeleteBook,
   onOpenBook,
+  onRenameBook,
 }: BooksLibraryProps) {
   if (isLoading) {
     return (
@@ -70,8 +74,10 @@ export function BooksLibrary({
             <BookCard
               book={book}
               isDeleting={deletingBookId === book.id}
+              isRenaming={renamingBookId === book.id}
               onDelete={onDeleteBook}
               onOpen={onOpenBook}
+              onRename={onRenameBook}
             />
           </motion.div>
         ))}

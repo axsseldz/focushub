@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Book } from "@/types/book";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
-import { VoiceCommands } from "@/components/reading-mode/VoiceCommands";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 // ---------------------------------------------------------------------------
@@ -21,14 +20,28 @@ type PdfReaderProps = {
 // Component
 // ---------------------------------------------------------------------------
 
+const PAGE_STORAGE_KEY = (bookId: string) => `focushub:lastPage:${bookId}`;
+
+function readSavedPage(bookId: string): number {
+  if (typeof window === "undefined") return 1;
+  const raw = window.localStorage.getItem(PAGE_STORAGE_KEY(bookId));
+  const parsed = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
 export function PdfReader({ book, onBack }: PdfReaderProps) {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [pageRatio, setPageRatio] = useState<number | null>(null); // width / height
   const [numPages, setNumPages] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
+  // Lazy initialiser reads the last known page from localStorage so the
+  // reader resumes exactly where the user left off. Clamped to numPages
+  // once the PDF reports its total length (see onLoadSuccess below).
+  const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [gestureEnabled, setGestureEnabled] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  // Brief toast shown when the user resumes a book on a page > 1 so
+  // the jump is not surprising.
+  const [resumedFromPage, setResumedFromPage] = useState<number | null>(null);
   const [pdfComponents, setPdfComponents] = useState<{
     Document: (typeof import("react-pdf"))["Document"];
     Page: (typeof import("react-pdf"))["Page"];
@@ -42,6 +55,28 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onBack]);
+
+  // Persist the current page per book so the next open resumes here.
+  // Only write once numPages is known so we never store 0 or a clamp-
+  // corrected value that doesn't match a user action.
+  useEffect(() => {
+    if (numPages === 0) return;
+    try {
+      window.localStorage.setItem(
+        PAGE_STORAGE_KEY(book.id),
+        String(currentPage),
+      );
+    } catch {
+      // Ignore storage failures (quota, private mode, etc.)
+    }
+  }, [book.id, currentPage, numPages]);
+
+  // Auto-dismiss the "resumed from page N" toast after 4 s.
+  useEffect(() => {
+    if (resumedFromPage === null) return;
+    const id = window.setTimeout(() => setResumedFromPage(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [resumedFromPage]);
 
   // Lazy-load react-pdf so the PDF engine only hits the bundle when needed
   useEffect(() => {
@@ -148,7 +183,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
             {/* Book title */}
             <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-lg">
-              {book.filename}
+              {book.displayName ?? book.filename}
             </h1>
 
             {/* Page navigation controls */}
@@ -182,38 +217,21 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
 
-            {/* Feature toggles — each feature is independently enabled */}
-            <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 dark:border-zinc-700 dark:bg-zinc-800/80">
-              <button
-                type="button"
-                onClick={() => setGestureEnabled((v) => !v)}
-                aria-pressed={gestureEnabled}
-                title="Navegar con gestos de mano"
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
-                  gestureEnabled
-                    ? "bg-white text-emerald-700 shadow-sm dark:bg-zinc-700 dark:text-emerald-400"
-                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                }`}
-              >
-                <HandIcon active={gestureEnabled} />
-                Gestos
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setVoiceEnabled((v) => !v)}
-                aria-pressed={voiceEnabled}
-                title='Navegar con voz · di "siguiente" o "anterior"'
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
-                  voiceEnabled
-                    ? "bg-white text-violet-700 shadow-sm dark:bg-zinc-700 dark:text-violet-400"
-                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                }`}
-              >
-                <MicIcon active={voiceEnabled} />
-                Voz
-              </button>
-            </div>
+            {/* Gesture toggle */}
+            <button
+              type="button"
+              onClick={() => setGestureEnabled((v) => !v)}
+              aria-pressed={gestureEnabled}
+              title="Navegar con gestos de mano"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                gestureEnabled
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400"
+                  : "border-slate-200 bg-white text-slate-600 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              <HandIcon active={gestureEnabled} />
+              Gestos
+            </button>
 
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
             <ThemeToggle />
@@ -234,6 +252,13 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
               onLoadSuccess={({ numPages: total }) => {
                 setNumPages(total);
                 setPageRatio(null); // reset until first page reports its ratio
+                // Clamp the restored page to the PDF's actual length and
+                // show a toast if we resumed past page 1.
+                setCurrentPage((p) => {
+                  const clamped = Math.min(Math.max(p, 1), total);
+                  if (clamped > 1) setResumedFromPage(clamped);
+                  return clamped;
+                });
               }}
               error={
                 <div className="rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
@@ -306,15 +331,42 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         )}
       </motion.section>
 
+      {/* Resume toast — fades in when the user reopens a book past page 1
+          and auto-dismisses a few seconds later. */}
+      <AnimatePresence>
+        {resumedFromPage !== null && (
+          <motion.div
+            key="resume-toast"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="pointer-events-auto fixed left-1/2 top-20 z-40 -translate-x-1/2"
+          >
+            <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-zinc-700 dark:bg-zinc-900">
+              <span className="text-slate-700 dark:text-zinc-200">
+                Continuando desde la página{" "}
+                <strong className="tabular-nums">{resumedFromPage}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentPage(1);
+                  setResumedFromPage(null);
+                }}
+                className="rounded-full border border-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-zinc-100"
+              >
+                Empezar de cero
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Fixed overlays — live outside the scrollable section so they stay
           anchored to the viewport corners at all times. */}
       <GestureCamera
         enabled={gestureEnabled}
-        onNextPage={goToNextPage}
-        onPrevPage={goToPrevPage}
-      />
-      <VoiceCommands
-        enabled={voiceEnabled}
         onNextPage={goToNextPage}
         onPrevPage={goToPrevPage}
       />
@@ -352,32 +404,6 @@ function HandIcon({ active }: { active: boolean }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function MicIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={`h-3.5 w-3.5 shrink-0 transition-colors duration-200 ${active ? "text-violet-500" : "text-slate-400"}`}
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M19 10a7 7 0 0 1-14 0M12 19v3M9 22h6"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.6"
       />
     </svg>
   );
