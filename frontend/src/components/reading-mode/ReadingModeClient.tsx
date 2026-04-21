@@ -29,6 +29,7 @@ function mapStoredFileToBook(file: StoredFile): Book {
   return {
     id: String(file.id),
     filename: file.file_name,
+    displayName: file.display_name,
     fileUrl: file.file_url,
     thumbnailUrl: file.thumbnail_url,
     uploadedAt: file.created_at,
@@ -38,6 +39,7 @@ function mapStoredFileToBook(file: StoredFile): Book {
 export function ReadingModeClient() {
   const [books, setBooks] = useState<Book[]>([]);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [renamingBookId, setRenamingBookId] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
@@ -126,6 +128,49 @@ export function ReadingModeClient() {
       );
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleRenameBook = async (book: Book, nextTitle: string) => {
+    const trimmed = nextTitle.trim();
+    const currentTitle = book.displayName ?? book.filename;
+    if (!trimmed || trimmed === currentTitle) return;
+
+    setRenamingBookId(book.id);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/${book.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ display_name: trimmed }),
+      });
+
+      if (!response.ok) {
+        throw new Error("No se pudo actualizar el título.");
+      }
+
+      const updatedFile: StoredFile = await response.json();
+      const updatedBook = mapStoredFileToBook(updatedFile);
+
+      setBooks((currentBooks) =>
+        currentBooks.map((currentBook) =>
+          currentBook.id === book.id ? updatedBook : currentBook,
+        ),
+      );
+      setSelectedBook((current) =>
+        current?.id === book.id ? updatedBook : current,
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Ocurrió un error al actualizar el título.",
+      );
+    } finally {
+      setRenamingBookId(null);
     }
   };
 
@@ -231,25 +276,61 @@ export function ReadingModeClient() {
                   Agrega un libro nuevo a tu biblioteca.
                 </p>
                 <div className="mt-4">
-                  <div className="relative inline-flex h-11 w-full max-w-46 overflow-hidden rounded-full">
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
-                      <UploadIcon />
-                      <span>Seleccionar libro</span>
+                  {/* The FileUploaderRegular is overlaid invisibly on top of
+                      the visible pill. Because the pill has `pointer-events-none`,
+                      the `group` on the wrapper is what receives hover/active
+                      state from clicks, and propagates visual feedback to the
+                      pill below. Without this, the user sees NO reaction when
+                      clicking — a problem observed in usability testing. */}
+                  <div
+                    className={`group relative inline-flex h-11 w-full max-w-52 overflow-hidden rounded-full ${
+                      isUploading ? "cursor-wait" : "cursor-pointer"
+                    }`}
+                    aria-busy={isUploading}
+                  >
+                    <div
+                      className={`pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-150 ${
+                        isUploading
+                          ? "border-slate-300 bg-slate-100 text-slate-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                          : "border-slate-200 bg-white text-slate-900 group-hover:-translate-y-[1px] group-hover:border-slate-300 group-hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)] group-active:translate-y-0 group-active:bg-slate-50 group-active:shadow-[0_6px_14px_rgba(15,23,42,0.06)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:group-active:bg-zinc-700"
+                      }`}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Spinner />
+                          <span>Cargando…</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadIcon />
+                          <span>Seleccionar libro</span>
+                        </>
+                      )}
                     </div>
                     <div className="absolute inset-0 opacity-0">
                       <FileUploaderRegular
                         pubkey={process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY!}
                         sourceList="local, gdrive, dropbox"
                         classNameUploader="uc-light reading-mode-uploader"
+                        onCommonUploadStart={() => {
+                          setIsUploading(true);
+                          setErrorMessage(null);
+                        }}
+                        onCommonUploadFailed={() => setIsUploading(false)}
                         onCommonUploadSuccess={handleUpload}
                       />
                     </div>
                   </div>
                 </div>
                 {isUploading ? (
-                  <p className="mt-3 text-sm text-slate-500">
-                    Guardando libro y generando vista previa...
-                  </p>
+                  <div
+                    className="mt-3 flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Spinner />
+                    <span>Guardando libro y generando vista previa…</span>
+                  </div>
                 ) : null}
               </div>
             </header>
@@ -266,15 +347,26 @@ export function ReadingModeClient() {
               <BooksLibrary
                 books={books}
                 deletingBookId={deletingBookId}
+                renamingBookId={renamingBookId}
                 isLoading={isLoadingBooks}
                 onDeleteBook={setBookToDelete}
                 onOpenBook={setSelectedBook}
+                onRenameBook={handleRenameBook}
               />
             </section>
           </motion.section>
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700 dark:border-zinc-600 dark:border-t-zinc-200"
+    />
   );
 }
 
