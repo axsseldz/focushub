@@ -7,6 +7,7 @@ import type { Book } from "@/types/book";
 import { FocusMode } from "@/components/reading-mode/FocusMode";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useFocusMode } from "@/lib/focus-mode";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,9 +41,16 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
   // once the PDF reports its total length (see onLoadSuccess below).
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [gestureEnabled, setGestureEnabled] = useState(false);
-  const [focusEnabled, setFocusEnabled] = useState(false);
+  const {
+    enabled: focusEnabled,
+    enable: enableFocus,
+    disable: disableFocus,
+    notificationsMuted,
+  } = useFocusMode();
+  const toggleGestures = () => setGestureEnabled((v) => !v);
   // Brief toast shown when the user resumes a book on a page > 1 so
-  // the jump is not surprising.
+  // the jump is not surprising. Suppressed entirely while focus mode
+  // is active — that is the whole point of the mute flag.
   const [resumedFromPage, setResumedFromPage] = useState<number | null>(null);
   const [pdfComponents, setPdfComponents] = useState<{
     Document: (typeof import("react-pdf"))["Document"];
@@ -62,8 +70,16 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
 
       if (e.key === "Escape") {
-        if (focusEnabled) setFocusEnabled(false);
+        if (focusEnabled) disableFocus();
         else onBack();
+        return;
+      }
+
+      // Toggle focus with `f` (only when not editing text).
+      if (!isEditable && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        if (focusEnabled) disableFocus();
+        else enableFocus();
         return;
       }
 
@@ -79,7 +95,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onBack, focusEnabled, numPages]);
+  }, [onBack, focusEnabled, numPages, disableFocus, enableFocus]);
 
   // Persist the current page per book so the next open resumes here.
   // Only write once numPages is known so we never store 0 or a clamp-
@@ -180,9 +196,9 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 12 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className={`flex h-screen flex-col transition-colors duration-500 ${
+        className={`flex h-screen flex-col transition-colors duration-700 ease-out ${
           focusEnabled
-            ? "bg-[#0a0a0c]"
+            ? "bg-[#0a0a0c] text-zinc-200"
             : "bg-slate-50/70 dark:bg-zinc-950"
         }`}
       >
@@ -255,7 +271,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
             {/* Gesture toggle */}
             <button
               type="button"
-              onClick={() => setGestureEnabled((v) => !v)}
+              onClick={toggleGestures}
               aria-pressed={gestureEnabled}
               title="Navegar con gestos de mano"
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -268,6 +284,18 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
               Gestos
             </button>
 
+            {/* Deep Focus toggle */}
+            <button
+              type="button"
+              onClick={enableFocus}
+              aria-pressed={focusEnabled}
+              title="Modo Concentración Profunda (F)"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-[1px] hover:shadow-[0_12px_22px_rgba(15,23,42,0.22)] dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              <FocusIcon />
+              Focus
+            </button>
+
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
             <ThemeToggle />
           </div>
@@ -278,7 +306,11 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         ---------------------------------------------------------------- */}
         <div
           ref={pagesContainerRef}
-          className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
+          className={`mx-auto flex w-full flex-1 items-center justify-center overflow-hidden transition-[padding,max-width] duration-500 ease-out ${
+            focusEnabled
+              ? "max-w-3xl px-6 py-10 sm:px-12 lg:px-16"
+              : "max-w-6xl px-4 py-4 sm:px-6 lg:px-8"
+          }`}
         >
           {Document && Page ? (
             <Document
@@ -311,7 +343,13 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   transition={{ duration: 0.2, ease: "easeOut" }}
                   className="flex justify-center"
                 >
-                  <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900">
+                  <div
+                    className={`overflow-hidden rounded-[1.75rem] border transition-colors duration-500 ${
+                      focusEnabled
+                        ? "border-white/5 bg-zinc-900 shadow-none"
+                        : "border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900"
+                    }`}
+                  >
                     <Page
                       pageNumber={currentPage}
                       {...pageProp}
@@ -333,9 +371,11 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         </div>
 
         {/* ----------------------------------------------------------------
-          Bottom page navigation (convenience for mouse / touch users)
+          Bottom page navigation (convenience for mouse / touch users).
+          Hidden during focus mode — page turns happen with arrow keys,
+          gestures or the floating overlay.
         ---------------------------------------------------------------- */}
-        {isLoaded && (
+        {isLoaded && !focusEnabled && (
           <footer className="sticky bottom-0 z-10 border-t border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
             <div className="mx-auto flex max-w-6xl items-center justify-center gap-4 px-6 py-3">
               <button
@@ -367,9 +407,10 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
       </motion.section>
 
       {/* Resume toast — fades in when the user reopens a book past page 1
-          and auto-dismisses a few seconds later. */}
+          and auto-dismisses a few seconds later. Suppressed while focus
+          mode is active so nothing breaks the calm. */}
       <AnimatePresence>
-        {resumedFromPage !== null && (
+        {resumedFromPage !== null && !notificationsMuted && (
           <motion.div
             key="resume-toast"
             initial={{ opacity: 0, y: -12 }}
@@ -404,6 +445,15 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         enabled={gestureEnabled}
         onNextPage={goToNextPage}
         onPrevPage={goToPrevPage}
+      />
+
+      {/* Deep Focus overlay — driven by the global focus context. The
+          gesture toggle is plumbed through so the user can enable / disable
+          gestures from the floating chrome, since the regular header is
+          hidden in this state. */}
+      <FocusMode
+        gestureEnabled={gestureEnabled}
+        onToggleGestures={toggleGestures}
       />
     </>
   );
@@ -477,6 +527,25 @@ function ChevronDownIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.7"
+      />
+    </svg>
+  );
+}
+
+function FocusIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M4 8.5V6a2 2 0 0 1 2-2h2.5M20 8.5V6a2 2 0 0 0-2-2h-2.5M4 15.5V18a2 2 0 0 0 2 2h2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M12 9.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
       />
     </svg>
   );

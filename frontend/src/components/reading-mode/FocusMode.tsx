@@ -1,75 +1,21 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useFocusMode } from "@/lib/focus-mode";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type AmbientType = "off" | "brown" | "pink" | "white";
-
 type FocusModeProps = {
-  enabled: boolean;
-  onExit: () => void;
+  /** Current state of the gesture-navigation toggle in the parent reader. */
+  gestureEnabled?: boolean;
+  /** Toggle gesture navigation. When provided, a control appears in the
+   *  floating chrome so the user can enable / disable gestures without
+   *  leaving focus mode (the regular header is hidden in this state). */
+  onToggleGestures?: () => void;
 };
-
-const AMBIENT_LABELS: Record<AmbientType, string> = {
-  off: "Silencio",
-  brown: "Ruido marrón",
-  pink: "Ruido rosa",
-  white: "Ruido blanco",
-};
-
-const STORAGE_KEY_AMBIENT = "focushub:focus:ambient";
-const STORAGE_KEY_VOLUME = "focushub:focus:volume";
-
-// ---------------------------------------------------------------------------
-// Noise synthesis
-//
-// Three flavours of ambient noise, each generated directly in-browser via the
-// Web Audio API — no assets to ship. A 2-second buffer is looped for stable
-// CPU usage and seamless playback. Algorithms are standard:
-//   · white : uniform random samples in [-1, 1]
-//   · pink  : Paul Kellet's filter (1/f approximation)
-//   · brown : integrated white noise (heavier low end, most relaxing)
-// ---------------------------------------------------------------------------
-
-function createNoiseBuffer(
-  ctx: AudioContext,
-  type: Exclude<AmbientType, "off">,
-): AudioBuffer {
-  const seconds = 2;
-  const length = Math.floor(ctx.sampleRate * seconds);
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  if (type === "white") {
-    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-  } else if (type === "pink") {
-    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-    for (let i = 0; i < length; i++) {
-      const w = Math.random() * 2 - 1;
-      b0 = 0.99886 * b0 + w * 0.0555179;
-      b1 = 0.99332 * b1 + w * 0.0750759;
-      b2 = 0.969 * b2 + w * 0.153852;
-      b3 = 0.8665 * b3 + w * 0.3104856;
-      b4 = 0.55 * b4 + w * 0.5329522;
-      b5 = -0.7616 * b5 - w * 0.016898;
-      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11;
-      b6 = w * 0.115926;
-    }
-  } else {
-    let last = 0;
-    for (let i = 0; i < length; i++) {
-      const w = Math.random() * 2 - 1;
-      last = (last + 0.02 * w) / 1.02;
-      data[i] = last * 3.5;
-    }
-  }
-
-  return buffer;
-}
 
 // ---------------------------------------------------------------------------
 // Hooks
@@ -146,130 +92,67 @@ function useWakeLock(enabled: boolean) {
 }
 
 /**
- * Plays a synthesized noise loop while `enabled && type !== "off"`. Volume is
- * adjusted live without restarting the source. The AudioContext is created
- * on first play and closed on unmount.
- */
-function useAmbient(enabled: boolean, type: AmbientType, volume: number) {
-  const ctxRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-
-  useEffect(() => {
-    // Always stop the previous source when either the toggle flips or the
-    // noise flavour changes.
-    const previous = sourceRef.current;
-    if (previous) {
-      try {
-        previous.stop();
-      } catch {
-        // Ignore — source may already be stopped.
-      }
-      previous.disconnect();
-      sourceRef.current = null;
-    }
-
-    if (!enabled || type === "off") return;
-    if (typeof window === "undefined" || !window.AudioContext) return;
-
-    if (!ctxRef.current) ctxRef.current = new AudioContext();
-    if (!gainRef.current) {
-      gainRef.current = ctxRef.current.createGain();
-      gainRef.current.connect(ctxRef.current.destination);
-    }
-    gainRef.current.gain.value = volume;
-
-    const buffer = createNoiseBuffer(ctxRef.current, type);
-    const source = ctxRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(gainRef.current);
-    source.start();
-    sourceRef.current = source;
-
-    return () => {
-      try {
-        source.stop();
-      } catch {
-        // Ignore.
-      }
-      source.disconnect();
-    };
-  }, [enabled, type, volume]);
-
-  // Live volume updates without tearing down the source.
-  useEffect(() => {
-    if (gainRef.current) gainRef.current.gain.value = volume;
-  }, [volume]);
-
-  // Close the AudioContext only when the component unmounts for good.
-  useEffect(() => {
-    return () => {
-      ctxRef.current?.close().catch(() => {});
-      ctxRef.current = null;
-      gainRef.current = null;
-    };
-  }, []);
-}
-
-/**
- * Returns the number of seconds elapsed since `enabled` turned true. Resets
- * every time the focus block restarts.
+ * Returns the number of seconds elapsed since `enabled` turned true. The
+ * timestamp is captured inside the effect (impure calls aren't allowed in
+ * render with React 19) and the displayed value is masked to 0 when the
+ * mode is off so a previous session's count doesn't leak into a new one.
  */
 function useElapsed(enabled: boolean): number {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    if (!enabled) {
-      setElapsed(0);
-      return;
-    }
+    if (!enabled) return;
     const started = Date.now();
-    const id = window.setInterval(() => {
+    const update = () =>
       setElapsed(Math.floor((Date.now() - started) / 1000));
-    }, 1000);
-    return () => window.clearInterval(id);
+    // Run the first update on a microtask so we don't write state from
+    // inside the effect body, which the React 19 lint rule flags.
+    const initial = window.setTimeout(update, 0);
+    const id = window.setInterval(update, 1000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(id);
+    };
   }, [enabled]);
 
-  return elapsed;
+  return enabled ? elapsed : 0;
 }
 
 /**
- * Watches page visibility. When the tab goes hidden during focus and returns
- * after ≥ 3 seconds, exposes the away duration so the caller can nudge the
- * user back. The value auto-clears after 5 s so the nudge doesn't linger.
+ * Reveals the floating chrome on pointer movement and re-hides it after a
+ * short idle window. While disabled, always returns `true` so the chrome is
+ * unaffected outside focus mode.
  */
-function useDistractionTracker(enabled: boolean): number | null {
-  const [awayFor, setAwayFor] = useState<number | null>(null);
+function useChromeReveal(enabled: boolean, idleMs = 2200) {
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    if (!enabled) {
-      setAwayFor(null);
-      return;
-    }
+    if (!enabled) return;
 
-    let leftAt: number | null = null;
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        leftAt = Date.now();
-      } else if (leftAt !== null) {
-        const seconds = Math.round((Date.now() - leftAt) / 1000);
-        if (seconds >= 3) setAwayFor(seconds);
-        leftAt = null;
-      }
+    let timer: number | undefined;
+    const show = () => {
+      setVisible(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setVisible(false), idleMs);
     };
 
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [enabled]);
+    // Schedule the initial reveal asynchronously so we never call setState
+    // synchronously from inside the effect body.
+    const initial = window.setTimeout(show, 0);
+    window.addEventListener("mousemove", show);
+    window.addEventListener("keydown", show);
+    window.addEventListener("touchstart", show);
 
-  useEffect(() => {
-    if (awayFor === null) return;
-    const id = window.setTimeout(() => setAwayFor(null), 5000);
-    return () => window.clearTimeout(id);
-  }, [awayFor]);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearTimeout(timer);
+      window.removeEventListener("mousemove", show);
+      window.removeEventListener("keydown", show);
+      window.removeEventListener("touchstart", show);
+    };
+  }, [enabled, idleMs]);
 
-  return awayFor;
+  return enabled ? visible : true;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,19 +165,6 @@ function formatElapsed(seconds: number): string {
   return `${mm}:${ss}`;
 }
 
-function readStoredAmbient(): AmbientType {
-  if (typeof window === "undefined") return "off";
-  const raw = window.localStorage.getItem(STORAGE_KEY_AMBIENT);
-  return raw === "brown" || raw === "pink" || raw === "white" ? raw : "off";
-}
-
-function readStoredVolume(): number {
-  if (typeof window === "undefined") return 0.4;
-  const raw = window.localStorage.getItem(STORAGE_KEY_VOLUME);
-  const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.4;
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -302,138 +172,114 @@ function readStoredVolume(): number {
 /**
  * FocusMode
  *
- * A distraction-free overlay for the PDF reader. When `enabled` is true:
- *   · the tab enters fullscreen
- *   · a screen wake lock keeps the display from sleeping
- *   · optional ambient noise plays (synthesized, not streamed)
- *   · tab switches are detected and surfaced as a gentle nudge
+ * A distraction-free overlay for the PDF reader. Reads its enabled flag from
+ * the global FocusModeContext. While active:
+ *   · the tab enters fullscreen and acquires a screen wake lock
+ *   · a soft charcoal wash fades in over the reader (z-40, pointer-events-none)
+ *   · floating chrome (top pill: status, elapsed, gesture toggle, exit) auto
+ *     hides after ~2 s of idle and reappears on any pointer / keyboard activity
  *
- * The component only renders its own floating controls — the caller is
- * responsible for dimming the rest of the reader UI.
+ * The wash sits at z-40 (under the gesture camera at z-50) so the camera
+ * preview stays visible. The chrome lives at z-70 so it stays clickable.
  */
-export function FocusMode({ enabled, onExit }: FocusModeProps) {
-  const [ambient, setAmbient] = useState<AmbientType>(() => readStoredAmbient());
-  const [volume, setVolume] = useState<number>(() => readStoredVolume());
+export function FocusMode({ gestureEnabled, onToggleGestures }: FocusModeProps) {
+  const { enabled, disable } = useFocusMode();
 
-  useFullscreen(enabled, onExit);
+  useFullscreen(enabled, disable);
   useWakeLock(enabled);
-  useAmbient(enabled, ambient, volume);
   const elapsed = useElapsed(enabled);
-  const awayFor = useDistractionTracker(enabled);
-
-  // Persist preferences across sessions.
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY_AMBIENT, ambient);
-    } catch {
-      // Quota / private mode — fine to skip.
-    }
-  }, [ambient]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY_VOLUME, String(volume));
-    } catch {
-      // Same as above.
-    }
-  }, [volume]);
-
-  if (!enabled) return null;
+  const chromeVisible = useChromeReveal(enabled);
 
   return (
-    <>
-      {/* Top pill: status + elapsed + exit. Fixed to the viewport so it is
-          always reachable regardless of scroll. */}
-      <div className="fixed left-1/2 top-4 z-[70] -translate-x-1/2">
-        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/60 px-4 py-1.5 text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            En Focus
-          </span>
-          <span className="text-[11px] tabular-nums text-white/80">
-            {formatElapsed(elapsed)}
-          </span>
-          <button
-            type="button"
-            onClick={onExit}
-            className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-white/90 transition-colors hover:bg-white/20"
-          >
-            Salir
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom-left: ambient sound controller. Sits out of the way of the
-          PDF page navigation at the bottom of the viewport. */}
-      <div className="fixed bottom-6 left-6 z-[70]">
-        <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/60 px-3 py-2 text-white/80 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <SoundIcon />
-          <select
-            value={ambient}
-            onChange={(e) => setAmbient(e.target.value as AmbientType)}
-            aria-label="Sonido ambiente"
-            className="rounded-md border border-white/10 bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90 outline-none"
-          >
-            {(Object.keys(AMBIENT_LABELS) as AmbientType[]).map((key) => (
-              <option key={key} value={key} className="bg-black">
-                {AMBIENT_LABELS[key]}
-              </option>
-            ))}
-          </select>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            disabled={ambient === "off"}
-            aria-label="Volumen de ambiente"
-            className="h-1 w-24 cursor-pointer accent-emerald-400 disabled:opacity-40"
-          />
-        </div>
-      </div>
-
-      {/* Distraction nudge: shown when the user comes back after ≥3s away. */}
-      <AnimatePresence>
-        {awayFor !== null && (
+    <AnimatePresence>
+      {enabled && (
+        <>
+          {/* Soft palette wash. Pointer-events disabled so the reader stays
+              fully interactive underneath. Sits below the gesture camera
+              (z-50) so the camera preview is never obscured. */}
           <motion.div
-            key="away-toast"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="pointer-events-none fixed right-6 top-20 z-[80]"
+            key="focus-wash"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.65, ease: [0.22, 0.61, 0.36, 1] }}
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 z-[40] bg-[radial-gradient(ellipse_at_center,_rgba(20,22,28,0.28)_0%,_rgba(5,6,9,0.7)_100%)]"
+          />
+
+          {/* Floating chrome — only this layer captures pointer events. */}
+          <motion.div
+            key="focus-chrome"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: chromeVisible ? 1 : 0.08 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="fixed left-1/2 top-4 z-[70] -translate-x-1/2"
+            onMouseEnter={(event) => {
+              // While the chrome is dim, hovering it should restore full
+              // visibility so the user can read the buttons.
+              (event.currentTarget as HTMLDivElement).style.opacity = "1";
+            }}
           >
-            <div className="rounded-2xl border border-amber-300/25 bg-amber-400/10 px-4 py-2 text-xs text-amber-100 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md">
-              Estuviste fuera <strong className="tabular-nums">{awayFor}s</strong>.
-              Respira y regresa al libro.
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-1.5 text-xs text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                En Focus
+              </span>
+              <span className="text-[11px] tabular-nums opacity-80">
+                {formatElapsed(elapsed)}
+              </span>
+              {onToggleGestures && (
+                <button
+                  type="button"
+                  onClick={onToggleGestures}
+                  aria-pressed={gestureEnabled ?? false}
+                  title="Activar / desactivar gestos"
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                    gestureEnabled
+                      ? "bg-emerald-400/20 text-emerald-200 hover:bg-emerald-400/30"
+                      : "bg-white/10 text-white/90 hover:bg-white/20"
+                  }`}
+                >
+                  <HandIcon active={gestureEnabled ?? false} />
+                  Gestos
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={disable}
+                className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold transition-colors hover:bg-white/25"
+              >
+                Salir
+              </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Icon
+// Icons
 // ---------------------------------------------------------------------------
 
-function SoundIcon() {
+function HandIcon({ active }: { active: boolean }) {
   return (
     <svg
       aria-hidden="true"
-      className="h-3.5 w-3.5 text-white/70"
+      className={`h-3 w-3 shrink-0 transition-colors ${
+        active ? "text-emerald-300" : "text-white/80"
+      }`}
       fill="none"
       viewBox="0 0 24 24"
     >
       <path
-        d="M4 9v6h4l5 4V5L8 9H4ZM16 9.5a4 4 0 0 1 0 5M19 7a7 7 0 0 1 0 10"
+        d="M18 11V9a2 2 0 0 0-4 0v-.5M14 8.5V6a2 2 0 0 0-4 0v3M10 9V5a2 2 0 0 0-4 0v8l-1.5-2a1.5 1.5 0 0 0-2.122 2.122L5 18a7 7 0 0 0 7 3.5 7 7 0 0 0 7-7v-3.5a2 2 0 0 0-4 0V11"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="1.6"
+        strokeWidth="1.5"
       />
     </svg>
   );

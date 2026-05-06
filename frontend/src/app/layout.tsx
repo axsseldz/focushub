@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
+import { FocusModeProvider } from "@/lib/focus-mode";
 
 export const metadata: Metadata = {
   title: "FocusHub",
@@ -26,7 +27,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-white dark:bg-zinc-950">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <FocusModeProvider>{children}</FocusModeProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

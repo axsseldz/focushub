@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFocusMode } from "@/lib/focus-mode";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -145,6 +146,12 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
   const [status, setStatus] = useState<Status>("idle");
   const [videoHidden, setVideoHidden] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
+
+  // Re-skin the gesture overlay when the user is in focus mode so the
+  // panel blends with the charcoal palette instead of clashing in light
+  // slate / white. The conditional class strings are defined in one place
+  // to keep the JSX readable below.
+  const { enabled: focusEnabled } = useFocusMode();
 
   // Reset the guide every time gestures are re-enabled
   useEffect(() => {
@@ -328,24 +335,50 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
         <div
           role="dialog"
           aria-label="Guía de gestos"
-          className="w-72 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.12)] dark:border-zinc-700 dark:bg-zinc-900"
+          className={`w-72 rounded-2xl border p-4 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-md ${
+            focusEnabled
+              ? "border-white/10 bg-black/55 text-white"
+              : "border-slate-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)] dark:border-zinc-700 dark:bg-zinc-900"
+          }`}
         >
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-zinc-400">
+            <p
+              className={`text-xs font-semibold uppercase tracking-[0.18em] ${
+                focusEnabled
+                  ? "text-white/55"
+                  : "text-slate-500 dark:text-zinc-400"
+              }`}
+            >
               Cómo usar los gestos
             </p>
             <button
               type="button"
               onClick={() => setShowGuide(false)}
               aria-label="Cerrar guía"
-              className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              className={`rounded-full p-1 transition-colors ${
+                focusEnabled
+                  ? "text-white/60 hover:bg-white/10 hover:text-white"
+                  : "text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              }`}
             >
               <CloseIcon />
             </button>
           </div>
-          <ul className="space-y-2 text-sm text-slate-700 dark:text-zinc-200">
+          <ul
+            className={`space-y-2 text-sm ${
+              focusEnabled
+                ? "text-white/85"
+                : "text-slate-700 dark:text-zinc-200"
+            }`}
+          >
             <li className="flex items-center gap-3">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-base dark:bg-emerald-900/30">
+              <span
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-base ${
+                  focusEnabled
+                    ? "bg-emerald-400/20"
+                    : "bg-emerald-100 dark:bg-emerald-900/30"
+                }`}
+              >
                 ☝️
               </span>
               <span>
@@ -353,7 +386,13 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
               </span>
             </li>
             <li className="flex items-center gap-3">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-base dark:bg-emerald-900/30">
+              <span
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-base ${
+                  focusEnabled
+                    ? "bg-emerald-400/20"
+                    : "bg-emerald-100 dark:bg-emerald-900/30"
+                }`}
+              >
                 ✌️
               </span>
               <span>
@@ -361,10 +400,22 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
               </span>
             </li>
             <li className="flex items-center gap-3">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-base dark:bg-zinc-800">
+              <span
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-base ${
+                  focusEnabled
+                    ? "bg-white/10"
+                    : "bg-slate-100 dark:bg-zinc-800"
+                }`}
+              >
                 ⏱
               </span>
-              <span className="text-slate-500 dark:text-zinc-400">
+              <span
+                className={
+                  focusEnabled
+                    ? "text-white/55"
+                    : "text-slate-500 dark:text-zinc-400"
+                }
+              >
                 Mantén el gesto quieto <strong>~0.6 s</strong>
               </span>
             </li>
@@ -372,7 +423,11 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
           <button
             type="button"
             onClick={() => setShowGuide(false)}
-            className="mt-3 w-full rounded-full bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            className={`mt-3 w-full rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
+              focusEnabled
+                ? "bg-white/10 text-white hover:bg-white/20"
+                : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            }`}
           >
             Entendido
           </button>
@@ -387,16 +442,32 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
       <div
         role="region"
         aria-label="Vista de cámara para lectura inteligente"
-        className="w-72 max-w-[min(22rem,90vw)] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)] dark:border-zinc-700 dark:bg-zinc-900"
+        className={`w-72 max-w-[min(22rem,90vw)] overflow-hidden rounded-2xl border ${
+          focusEnabled
+            ? "border-white/10 bg-black/55 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-md"
+            : "border-slate-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)] dark:border-zinc-700 dark:bg-zinc-900"
+        }`}
       >
         {/* Header bar — always visible when active. The hide/show button
             lives here (outside the video) with a clear text label so it
             is easy to find. */}
         {status === "active" && (
-          <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/80 px-2.5 py-2 dark:border-zinc-700 dark:bg-zinc-800/80">
+          <div
+            className={`flex items-center justify-between gap-2 border-b px-2.5 py-2 ${
+              focusEnabled
+                ? "border-white/10 bg-white/5"
+                : "border-slate-200/80 bg-slate-50/80 dark:border-zinc-700 dark:bg-zinc-800/80"
+            }`}
+          >
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
-              <span className="truncate text-[11px] font-medium text-slate-600 dark:text-zinc-300">
+              <span
+                className={`truncate text-[11px] font-medium ${
+                  focusEnabled
+                    ? "text-white/80"
+                    : "text-slate-600 dark:text-zinc-300"
+                }`}
+              >
                 Gestos activos
               </span>
             </div>
@@ -407,7 +478,11 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
                   onClick={() => setShowGuide(true)}
                   aria-label="Mostrar guía de gestos"
                   title="Ver guía de gestos"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                    focusEnabled
+                      ? "text-white/70 hover:bg-white/10 hover:text-white"
+                      : "text-slate-500 hover:bg-slate-200/70 hover:text-slate-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+                  }`}
                 >
                   <QuestionIcon />
                 </button>
@@ -416,7 +491,11 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
                 type="button"
                 onClick={() => setVideoHidden((v) => !v)}
                 aria-label={videoHidden ? "Mostrar cámara" : "Ocultar cámara"}
-                className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  focusEnabled
+                    ? "bg-white/10 text-white hover:bg-white/20"
+                    : "bg-white text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                }`}
               >
                 {videoHidden ? <EyeIcon /> : <EyeOffIcon />}
                 <span>{videoHidden ? "Mostrar" : "Ocultar"}</span>
@@ -427,20 +506,58 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
 
         {/* Loading */}
         {status === "loading" && (
-          <div className="flex h-40 w-full flex-col items-center justify-center gap-2 bg-slate-50 dark:bg-zinc-800">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600 dark:border-zinc-700 dark:border-t-zinc-300" />
-            <span className="text-[11px] text-slate-400 dark:text-zinc-500">Cargando modelo…</span>
+          <div
+            className={`flex h-40 w-full flex-col items-center justify-center gap-2 ${
+              focusEnabled
+                ? "bg-white/5"
+                : "bg-slate-50 dark:bg-zinc-800"
+            }`}
+          >
+            <span
+              className={`h-4 w-4 animate-spin rounded-full border-2 ${
+                focusEnabled
+                  ? "border-white/15 border-t-white/70"
+                  : "border-slate-200 border-t-slate-600 dark:border-zinc-700 dark:border-t-zinc-300"
+              }`}
+            />
+            <span
+              className={`text-[11px] ${
+                focusEnabled
+                  ? "text-white/55"
+                  : "text-slate-400 dark:text-zinc-500"
+              }`}
+            >
+              Cargando modelo…
+            </span>
           </div>
         )}
 
         {/* Error */}
         {status === "error" && (
-          <div className="flex h-40 w-full flex-col items-center justify-center gap-1.5 bg-red-50 px-3 text-center dark:bg-red-950/50">
+          <div
+            className={`flex h-40 w-full flex-col items-center justify-center gap-1.5 px-3 text-center ${
+              focusEnabled
+                ? "bg-red-500/10"
+                : "bg-red-50 dark:bg-red-950/50"
+            }`}
+          >
             <CameraOffIcon />
-            <span className="text-[11px] font-medium leading-tight text-red-600 dark:text-red-400">
+            <span
+              className={`text-[11px] font-medium leading-tight ${
+                focusEnabled
+                  ? "text-red-300"
+                  : "text-red-600 dark:text-red-400"
+              }`}
+            >
               Sin acceso a cámara
             </span>
-            <span className="text-[10px] leading-tight text-red-400 dark:text-red-500">
+            <span
+              className={`text-[10px] leading-tight ${
+                focusEnabled
+                  ? "text-red-300/70"
+                  : "text-red-400 dark:text-red-500"
+              }`}
+            >
               Verifica los permisos del navegador
             </span>
           </div>
@@ -463,16 +580,30 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
         {status === "active" && (
           <div
             ref={indicatorWrapRef}
-            className="hidden border-t border-slate-100 bg-white/95 dark:border-zinc-700 dark:bg-zinc-900/95"
+            className={`hidden border-t ${
+              focusEnabled
+                ? "border-white/10 bg-black/40"
+                : "border-slate-100 bg-white/95 dark:border-zinc-700 dark:bg-zinc-900/95"
+            }`}
           >
             <div className="px-2 py-1.5 text-center">
               <span
                 ref={indicatorTextRef}
-                className="text-[10px] font-medium tabular-nums text-slate-600 dark:text-zinc-300"
+                className={`text-[10px] font-medium tabular-nums ${
+                  focusEnabled
+                    ? "text-white/80"
+                    : "text-slate-600 dark:text-zinc-300"
+                }`}
               />
             </div>
             {/* Progress bar */}
-            <div className="h-[3px] w-full bg-slate-100 dark:bg-zinc-700">
+            <div
+              className={`h-[3px] w-full ${
+                focusEnabled
+                  ? "bg-white/10"
+                  : "bg-slate-100 dark:bg-zinc-700"
+              }`}
+            >
               <div
                 ref={progressBarRef}
                 className="h-full bg-emerald-400"
