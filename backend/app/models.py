@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import DateTime, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -18,4 +18,38 @@ class File(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+
+
+class ReadingSession(Base):
+    """One reading session = the user opening a book and reading for some
+    amount of *active* time. The frontend tracker only counts seconds while
+    the tab is visible and the user has been recently interactive, so the
+    duration here reflects engaged time, not wall-clock time.
+
+    The `book_id` is stored as a plain integer rather than a foreign key so
+    historical sessions stay accessible after a book is deleted."""
+
+    __tablename__ = "reading_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    book_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    pages_read: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_reading_sessions_started_at", "started_at"),
     )

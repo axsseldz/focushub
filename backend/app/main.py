@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine, ensure_database_schema
 from app.routes.files import router as files_router
+from app.routes.sessions import router as sessions_router
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(files_router)
+app.include_router(sessions_router)
 
 
 @app.get("/")

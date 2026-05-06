@@ -14,11 +14,13 @@
     "@uploadcare/react-uploader": "^1.13.0",
     "framer-motion": "^12.38.0",
     "gsap": "^3.14.2",
+    "lucide-react": "^1.14.0",
     "next": "16.2.1",
     "pdfjs-dist": "5.4.296",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-pdf": "^10.4.1"
+    "react-pdf": "^10.4.1",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

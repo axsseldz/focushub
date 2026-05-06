@@ -8,6 +8,7 @@ import { FocusMode } from "@/components/reading-mode/FocusMode";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useFocusMode } from "@/lib/focus-mode";
+import { useReadingSessionTracker } from "@/lib/reading-tracker";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +49,10 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
     notificationsMuted,
   } = useFocusMode();
   const toggleGestures = () => setGestureEnabled((v) => !v);
+
+  // Engagement tracking for the Analítica section. Counts only seconds
+  // while the tab is visible *and* the user has been interactive recently.
+  useReadingSessionTracker(book.id);
   // Brief toast shown when the user resumes a book on a page > 1 so
   // the jump is not surprising. Suppressed entirely while focus mode
   // is active — that is the whole point of the mute flag.

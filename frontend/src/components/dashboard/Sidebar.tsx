@@ -1,21 +1,25 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 const sidebarItems = [
   {
     label: "Dashboard",
     href: "/dashboard",
-    state: "active",
     icon: <DashboardIcon />,
   },
   {
     label: "Analítica",
-    state: "disabled",
+    href: "/analitica",
     icon: <AnalyticsIcon />,
   },
 ] as const;
 
 export function Sidebar() {
+  const pathname = usePathname();
+
   return (
     <aside className="flex h-full flex-col bg-slate-50/85 px-4 py-5 dark:bg-zinc-900 sm:px-5 lg:px-6 lg:py-7">
       <div>
@@ -35,27 +39,19 @@ export function Sidebar() {
           const sharedClasses =
             "flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium transition-colors";
 
-          if (item.state === "disabled") {
-            return (
-              <span
-                key={item.label}
-                className={`${sharedClasses} cursor-default text-slate-400 opacity-55 dark:text-zinc-600`}
-              >
-                <span className="text-current">{item.icon}</span>
-                <span>{item.label}</span>
-              </span>
-            );
-          }
+          const isActive =
+            pathname === item.href ||
+            (pathname?.startsWith(`${item.href}/`) ?? false);
 
-          const itemClasses =
-            item.state === "active"
-              ? `${sharedClasses} border border-slate-200 bg-white text-slate-950 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50`
-              : `${sharedClasses} text-slate-600 hover:bg-white hover:text-slate-950 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`;
+          const itemClasses = isActive
+            ? `${sharedClasses} border border-slate-200 bg-white text-slate-950 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50`
+            : `${sharedClasses} text-slate-600 hover:bg-white hover:text-slate-950 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`;
 
           return (
             <Link
               key={item.label}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               className={itemClasses}
             >
               <span className="text-current">{item.icon}</span>
