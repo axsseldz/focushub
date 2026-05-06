@@ -238,7 +238,7 @@ export function ReadingModeClient() {
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12 sm:px-8 lg:px-10 dark:text-zinc-50"
           >
-            <div className="mb-8">
+            <div className="mb-8 flex items-center justify-between">
               <Link
                 href="/dashboard"
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
@@ -246,6 +246,7 @@ export function ReadingModeClient() {
                 <BackIcon />
                 <span>Volver</span>
               </Link>
+              <ThemeToggle />
             </div>
 
             <header className="grid gap-8 border-b border-slate-200/80 pb-10 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -259,19 +260,16 @@ export function ReadingModeClient() {
                   transition={{ duration: 0.55, delay: 0.06, ease: "easeOut" }}
                   className="mt-3 text-4xl font-semibold tracking-[-0.065em] sm:text-5xl lg:text-[3.6rem]"
                 >
-                  <span className="bg-[linear-gradient(135deg,#020617_0%,#334155_42%,#0f172a_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#fafafa_0%,#a1a1aa_42%,#e4e4e7_100%)]">
+                  <span className="bg-[linear-gradient(135deg,#020617_0%,#334155_42%,#0f172a_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#bfc0cc_0%,#7d7f94_42%,#a8a9b8_100%)]">
                     Modo Lectura
                   </span>
                 </motion.h1>
               </div>
 
               <div className="w-full rounded-[1.75rem] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.045)] dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium tracking-[-0.02em] text-slate-700 dark:text-zinc-300">
-                    Subir libro
-                  </p>
-                  <ThemeToggle />
-                </div>
+                <p className="text-sm font-medium tracking-[-0.02em] text-slate-700 dark:text-zinc-300">
+                  Subir libro
+                </p>
                 <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-zinc-500">
                   Agrega un libro nuevo a tu biblioteca.
                 </p>

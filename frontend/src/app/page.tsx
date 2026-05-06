@@ -207,7 +207,7 @@ export default function Home() {
               Entra en estado de focus.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600 dark:text-zinc-400 sm:text-xl">
-              <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text font-semibold text-transparent">
+              <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text font-semibold text-transparent dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)]">
                 FocusHub
               </span>{" "}
               reduce distracciones, silencia interrupciones y crea un entorno
@@ -216,7 +216,7 @@ export default function Home() {
             <div className="mt-10 flex justify-center">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white"
+                className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
               >
                 Probar FocusHub
               </Link>

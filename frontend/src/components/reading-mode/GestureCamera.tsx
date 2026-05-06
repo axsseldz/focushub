@@ -426,7 +426,7 @@ export function GestureCamera({ enabled, onNextPage, onPrevPage }: GestureCamera
             className={`mt-3 w-full rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
               focusEnabled
                 ? "bg-white/10 text-white hover:bg-white/20"
-                : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-50"
             }`}
           >
             Entendido

@@ -146,7 +146,7 @@ export function BookCard({
               <button
                 type="submit"
                 disabled={isRenaming}
-                className="flex-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                className="flex-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-50"
               >
                 {isRenaming ? "Guardando..." : "Guardar"}
               </button>

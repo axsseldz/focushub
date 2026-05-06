@@ -7,6 +7,20 @@
 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+.dark {
+  --color-zinc-50: #bfc0cc;
+  --color-zinc-100: #a8a9b8;
+  --color-zinc-200: #9294a6;
+  --color-zinc-300: #7d7f94;
+  --color-zinc-400: #686a80;
+  --color-zinc-500: #53556e;
+  --color-zinc-600: #3c3e55;
+  --color-zinc-700: #222230;
+  --color-zinc-800: #1b1b24;
+  --color-zinc-900: #121218;
+  --color-zinc-950: #09090e;
+}
+
 .reading-mode-uploader,
 .reading-mode-uploader lr-file-uploader-regular,
 .reading-mode-uploader lr-upload-ctx-provider {

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ThemeToggle } from "@/components/ThemeToggle";
 
 const sidebarItems = [
   {
@@ -25,7 +24,7 @@ export function Sidebar() {
       <div>
         <Link
           href="/"
-          className="inline-block bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-lg font-semibold tracking-[-0.04em] text-transparent transition-opacity hover:opacity-85 sm:text-xl"
+          className="inline-block bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-lg font-semibold tracking-[-0.04em] text-transparent transition-opacity hover:opacity-85 dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)] sm:text-xl"
         >
           FocusHub
         </Link>
@@ -61,11 +60,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Theme toggle at the bottom of the sidebar */}
-      <div className="mt-auto flex items-center gap-2 pt-6">
-        <ThemeToggle />
-        <span className="text-xs text-slate-400 dark:text-zinc-600">Tema</span>
-      </div>
     </aside>
   );
 }
