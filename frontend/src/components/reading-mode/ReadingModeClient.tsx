@@ -286,7 +286,6 @@ export function ReadingModeClient() {
                     className={`group relative inline-flex h-11 w-full max-w-52 overflow-hidden rounded-full ${
                       isUploading ? "cursor-wait" : "cursor-pointer"
                     }`}
-                    aria-busy={isUploading}
                   >
                     <div
                       className={`pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-150 ${

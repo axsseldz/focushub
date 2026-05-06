@@ -6,6 +6,11 @@ import Link from "next/link";
 import type { Book } from "@/types/book";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import {
+  extractPdfPageParagraphCrops,
+  getPdfPageCount,
+  type PdfParagraphCrop,
+} from "@/lib/pdf";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,21 +36,19 @@ function readSavedPage(bookId: string): number {
 
 export function PdfReader({ book, onBack }: PdfReaderProps) {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
-  const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
-  const [pageRatio, setPageRatio] = useState<number | null>(null); // width / height
   const [numPages, setNumPages] = useState(0);
   // Lazy initialiser reads the last known page from localStorage so the
   // reader resumes exactly where the user left off. Clamped to numPages
   // once the PDF reports its total length (see onLoadSuccess below).
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [gestureEnabled, setGestureEnabled] = useState(false);
+  const [paragraphCrops, setParagraphCrops] = useState<PdfParagraphCrop[]>([]);
+  const [currentBlock, setCurrentBlock] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Brief toast shown when the user resumes a book on a page > 1 so
   // the jump is not surprising.
   const [resumedFromPage, setResumedFromPage] = useState<number | null>(null);
-  const [pdfComponents, setPdfComponents] = useState<{
-    Document: (typeof import("react-pdf"))["Document"];
-    Page: (typeof import("react-pdf"))["Page"];
-  } | null>(null);
 
   // Close on Escape
   useEffect(() => {
@@ -78,75 +81,89 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
     return () => window.clearTimeout(id);
   }, [resumedFromPage]);
 
-  // Lazy-load react-pdf so the PDF engine only hits the bundle when needed
+  // Load page count once; on success clamp saved page and show resume toast.
   useEffect(() => {
     let cancelled = false;
 
-    void import("react-pdf").then((module) => {
-      module.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
-        import.meta.url,
-      ).toString();
+    setLoadError(null);
 
-      if (!cancelled) {
-        setPdfComponents({
-          Document: module.Document,
-          Page: module.Page,
+    void getPdfPageCount(book.fileUrl)
+      .then((total) => {
+        if (cancelled) return;
+        setNumPages(total);
+        setCurrentPage((p) => {
+          const clamped = Math.min(Math.max(p, 1), total);
+          if (clamped > 1) setResumedFromPage(clamped);
+          return clamped;
         });
-      }
-    });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadError("No se pudo cargar el PDF.");
+        setIsLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [book.fileUrl]);
 
-  // Track container width for responsive page sizing
+  // Render the current page and extract paragraph crops whenever the page changes.
   useEffect(() => {
-    const container = pagesContainerRef.current;
-    if (!container) return;
+    if (numPages === 0) return;
 
-    const updateDims = () => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      setContainerDims((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
-    };
+    let cancelled = false;
 
-    const resizeObserver = new ResizeObserver(updateDims);
+    setIsLoading(true);
+    setLoadError(null);
+    setParagraphCrops([]);
+    setCurrentBlock(0);
 
-    updateDims();
-    resizeObserver.observe(container);
+    void extractPdfPageParagraphCrops(book.fileUrl, currentPage)
+      .then((crops) => {
+        if (cancelled) return;
+        setParagraphCrops(crops);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadError("No se pudo cargar esta página.");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+      });
 
     return () => {
-      resizeObserver.disconnect();
+      cancelled = true;
     };
-  }, []);
+  }, [book.fileUrl, currentPage, numPages]);
 
   // ---------------------------------------------------------------------------
-  // Navigation
+  // Navigation — block within page, then page
   // ---------------------------------------------------------------------------
 
-  const goToNextPage = () => {
-    setCurrentPage((p) => Math.min(p + 1, numPages));
+  const goToNextBlock = () => {
+    if (currentBlock < paragraphCrops.length - 1) {
+      setCurrentBlock((b) => b + 1);
+    } else if (currentPage < numPages) {
+      setCurrentPage((p) => p + 1);
+      // currentBlock resets to 0 in the extraction effect
+    }
   };
 
-  const goToPrevPage = () => {
-    setCurrentPage((p) => Math.max(p - 1, 1));
+  const goToPrevBlock = () => {
+    if (currentBlock > 0) {
+      setCurrentBlock((b) => b - 1);
+    } else if (currentPage > 1) {
+      setCurrentPage((p) => p - 1);
+      // Show last block of prev page after crops load
+    }
   };
 
-  // Compute the best-fit page dimension so the PDF fills the viewport without overflow.
-  // Available space subtracts padding from each axis, then clamps to reasonable bounds.
-  const availW = Math.min(Math.max(containerDims.width - 48, 280), 820);
-  const availH = Math.max(containerDims.height - 32, 200); // 16px top + bottom padding
-  // If the page ratio is known, pick the binding constraint; otherwise fall back to width.
-  const pageProp: { width: number; height?: number } =
-    pageRatio !== null && availH * pageRatio <= availW
-      ? { width: availH * pageRatio, height: availH } // height-bound
-      : { width: availW };                             // width-bound
-
-  const Document = pdfComponents?.Document;
-  const Page = pdfComponents?.Page;
   const isLoaded = numPages > 0;
+  const isLastBlock =
+    currentBlock === paragraphCrops.length - 1 && currentPage >= numPages;
+  const isFirstBlock = currentBlock === 0 && currentPage <= 1;
 
   return (
     <>
@@ -186,28 +203,30 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
               {book.displayName ?? book.filename}
             </h1>
 
-            {/* Page navigation controls */}
+            {/* Block / page progress */}
             {isLoaded && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={goToPrevPage}
-                  disabled={currentPage <= 1}
-                  aria-label="Página anterior"
+                  onClick={goToPrevBlock}
+                  disabled={isFirstBlock}
+                  aria-label="Bloque anterior"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
                   <ChevronUpIcon />
                 </button>
 
-                <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-zinc-400">
-                  {currentPage} / {numPages}
+                <span className="min-w-[6rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-zinc-400">
+                  {paragraphCrops.length > 0
+                    ? `${currentBlock + 1} / ${paragraphCrops.length}`
+                    : `p. ${currentPage}`}
                 </span>
 
                 <button
                   type="button"
-                  onClick={goToNextPage}
-                  disabled={currentPage >= numPages}
-                  aria-label="Página siguiente"
+                  onClick={goToNextBlock}
+                  disabled={isLastBlock}
+                  aria-label="Bloque siguiente"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
                   <ChevronDownIcon />
@@ -221,7 +240,6 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
             <button
               type="button"
               onClick={() => setGestureEnabled((v) => !v)}
-              aria-pressed={gestureEnabled}
               title="Navegar con gestos de mano"
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                 gestureEnabled
@@ -243,57 +261,64 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
         ---------------------------------------------------------------- */}
         <div
           ref={pagesContainerRef}
-          className="mx-auto flex w-full max-w-6xl flex-1 items-center justify-center overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
+          className="mx-auto flex w-full max-w-6xl flex-1 justify-center overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
         >
-          {Document && Page ? (
-            <Document
-              file={book.fileUrl}
-              loading={<PageSkeleton />}
-              onLoadSuccess={({ numPages: total }) => {
-                setNumPages(total);
-                setPageRatio(null); // reset until first page reports its ratio
-                // Clamp the restored page to the PDF's actual length and
-                // show a toast if we resumed past page 1.
-                setCurrentPage((p) => {
-                  const clamped = Math.min(Math.max(p, 1), total);
-                  if (clamped > 1) setResumedFromPage(clamped);
-                  return clamped;
-                });
-              }}
-              error={
-                <div className="rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
-                  No se pudo cargar el PDF.
-                </div>
-              }
-            >
-              {/* Animate page transitions with a unique key per page number */}
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={currentPage}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="flex justify-center"
-                >
-                  <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900">
-                    <Page
-                      pageNumber={currentPage}
-                      {...pageProp}
-                      onLoadSuccess={(page) => {
-                        const vp = page.getViewport({ scale: 1 });
-                        const ratio = vp.width / vp.height;
-                        setPageRatio((prev) => (prev === ratio ? prev : ratio));
-                      }}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                    />
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </Document>
-          ) : (
+          {isLoading ? (
             <PageSkeleton />
+          ) : loadError ? (
+            <div className="w-full max-w-3xl rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+              {loadError}
+            </div>
+          ) : paragraphCrops.length > 0 ? (
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${currentPage}-${currentBlock}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="flex w-full max-w-4xl flex-col items-center"
+              >
+                {/* Paragraph label */}
+                <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-zinc-500">
+                  Pág.&nbsp;{currentPage}&nbsp;·&nbsp;Párrafo&nbsp;{currentBlock + 1}&nbsp;de&nbsp;{paragraphCrops.length}
+                </p>
+
+                {/* Cropped paragraph image */}
+                <div className="w-full overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)] dark:border-zinc-700 dark:bg-zinc-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={paragraphCrops[currentBlock].dataUrl}
+                    alt={`Párrafo ${currentBlock + 1} de la página ${currentPage}`}
+                    className="h-auto w-full select-none"
+                    draggable={false}
+                  />
+                </div>
+
+                {/* Progress dots */}
+                {paragraphCrops.length > 1 && (
+                  <div className="mt-5 flex gap-1.5">
+                    {paragraphCrops.map((_, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCurrentBlock(idx)}
+                        aria-label={`Ir al párrafo ${idx + 1}`}
+                        className={`h-1.5 rounded-full transition-all duration-200 ${
+                          idx === currentBlock
+                            ? "w-5 bg-slate-700 dark:bg-zinc-200"
+                            : "w-1.5 bg-slate-300 hover:bg-slate-400 dark:bg-zinc-600 dark:hover:bg-zinc-400"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          ) : (
+            <div className="w-full max-w-3xl rounded-3xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-800 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
+              Esta página no contiene texto seleccionable y no puede dividirse en párrafos. Si el PDF es una imagen escaneada necesitará OCR.
+            </div>
           )}
         </div>
 
@@ -305,8 +330,8 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
             <div className="mx-auto flex max-w-6xl items-center justify-center gap-4 px-6 py-3">
               <button
                 type="button"
-                onClick={goToPrevPage}
-                disabled={currentPage <= 1}
+                onClick={goToPrevBlock}
+                disabled={isFirstBlock}
                 className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 <ChevronUpIcon />
@@ -314,13 +339,13 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
               </button>
 
               <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-zinc-500">
-                {currentPage} de {numPages}
+                Pág. {currentPage} / {numPages}
               </span>
 
               <button
                 type="button"
-                onClick={goToNextPage}
-                disabled={currentPage >= numPages}
+                onClick={goToNextBlock}
+                disabled={isLastBlock}
                 className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 Siguiente
@@ -367,8 +392,8 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
           anchored to the viewport corners at all times. */}
       <GestureCamera
         enabled={gestureEnabled}
-        onNextPage={goToNextPage}
-        onPrevPage={goToPrevPage}
+        onNextPage={goToNextBlock}
+        onPrevPage={goToPrevBlock}
       />
     </>
   );
