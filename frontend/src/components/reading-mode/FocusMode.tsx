@@ -4,6 +4,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useFocusMode } from "@/lib/focus-mode";
 
+// Time on screen during focus was removed — a visible clock is itself a
+// micro-distraction. The session is still tracked silently for analytics.
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -92,33 +95,6 @@ function useWakeLock(enabled: boolean) {
 }
 
 /**
- * Returns the number of seconds elapsed since `enabled` turned true. The
- * timestamp is captured inside the effect (impure calls aren't allowed in
- * render with React 19) and the displayed value is masked to 0 when the
- * mode is off so a previous session's count doesn't leak into a new one.
- */
-function useElapsed(enabled: boolean): number {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const started = Date.now();
-    const update = () =>
-      setElapsed(Math.floor((Date.now() - started) / 1000));
-    // Run the first update on a microtask so we don't write state from
-    // inside the effect body, which the React 19 lint rule flags.
-    const initial = window.setTimeout(update, 0);
-    const id = window.setInterval(update, 1000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(id);
-    };
-  }, [enabled]);
-
-  return enabled ? elapsed : 0;
-}
-
-/**
  * Reveals the floating chrome on pointer movement and re-hides it after a
  * short idle window. While disabled, always returns `true` so the chrome is
  * unaffected outside focus mode.
@@ -156,16 +132,6 @@ function useChromeReveal(enabled: boolean, idleMs = 2200) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatElapsed(seconds: number): string {
-  const mm = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const ss = (seconds % 60).toString().padStart(2, "0");
-  return `${mm}:${ss}`;
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -187,7 +153,6 @@ export function FocusMode({ gestureEnabled, onToggleGestures }: FocusModeProps) 
 
   useFullscreen(enabled, disable);
   useWakeLock(enabled);
-  const elapsed = useElapsed(enabled);
   const chromeVisible = useChromeReveal(enabled);
 
   return (
@@ -225,9 +190,6 @@ export function FocusMode({ gestureEnabled, onToggleGestures }: FocusModeProps) 
               <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                 En Focus
-              </span>
-              <span className="text-[11px] tabular-nums opacity-80">
-                {formatElapsed(elapsed)}
               </span>
               {onToggleGestures && (
                 <button
