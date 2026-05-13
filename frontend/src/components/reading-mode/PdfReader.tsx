@@ -51,8 +51,15 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
   const toggleGestures = () => setGestureEnabled((v) => !v);
 
   // Engagement tracking for the Analítica section. Counts only seconds
-  // while the tab is visible *and* the user has been interactive recently.
-  useReadingSessionTracker(book.id);
+  // while the user is *actively reading* — see reading-tracker.ts for the
+  // exact gates (presence + soft idle + recent reading proof).
+  const { notifyReadingActivity } = useReadingSessionTracker(book.id);
+
+  // Each page change is a strong reading signal — tells the tracker the
+  // user is making real progress, not just parked on an open tab.
+  useEffect(() => {
+    if (numPages > 0) notifyReadingActivity();
+  }, [currentPage, numPages, notifyReadingActivity]);
   // Brief toast shown when the user resumes a book on a page > 1 so
   // the jump is not surprising. Suppressed entirely while focus mode
   // is active — that is the whole point of the mute flag.

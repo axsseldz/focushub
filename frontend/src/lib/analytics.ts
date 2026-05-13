@@ -31,6 +31,20 @@ export type DailyBucket = {
 // Date helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Backend datetimes round-trip through SQLite as *naive* values (no Z, no
+ * offset). The ECMAScript spec says JS parses such strings as **local
+ * time**, which silently shifts every session by the user's UTC offset
+ * and can push a session into yesterday's or tomorrow's bucket.
+ *
+ * The backend stores UTC, so we append "Z" before parsing so the date
+ * lands where it belongs.
+ */
+export function parseBackendDate(iso: string): Date {
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`;
+  return new Date(normalized);
+}
+
 export function localISODate(date: Date): string {
   // YYYY-MM-DD in local TZ — `toISOString` would shift to UTC and bucket
   // sessions on the wrong day for users east of Greenwich.
@@ -81,7 +95,7 @@ export function buildDailyBuckets(
   }
 
   for (const session of sessions) {
-    const ended = new Date(session.ended_at);
+    const ended = parseBackendDate(session.ended_at);
     const iso = localISODate(ended);
     const bucket = index.get(iso);
     if (bucket) bucket.seconds += session.duration_seconds;
@@ -103,7 +117,7 @@ export function activeDateSet(sessions: readonly ReadingSessionDTO[]): Set<strin
   const dates = new Set<string>();
   for (const session of sessions) {
     if (session.duration_seconds <= 0) continue;
-    const ended = new Date(session.ended_at);
+    const ended = parseBackendDate(session.ended_at);
     dates.add(localISODate(ended));
   }
   return dates;

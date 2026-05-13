@@ -3,19 +3,37 @@
 /**
  * Active reading tracker.
  *
- * The tracker accumulates *engaged* time — seconds during which the tab is
- * visible and the user has been recently interactive (mouse / keyboard /
- * scroll / touch within the last `IDLE_THRESHOLD_MS`). Anything else (tab
- * hidden, user walked away) is ignored. This is what makes the streak and
- * daily-goal numbers meaningful instead of inflated wall-clock time.
+ * Goal: only count seconds when the user is *actually reading*, not when
+ * the tab is parked or the user is wiggling the mouse to keep the timer
+ * alive. We layer three independent gates and only tick when all three
+ * are open:
  *
- * On unmount, on book change, and on `pagehide` / `beforeunload` the
- * accumulated session is flushed to the backend. If the backend fetch
- * fails (offline, dev server down, etc.) the payload is queued in
- * localStorage and replayed on the next successful flush.
+ *   1. **Presence** — tab visible AND window focused. If either is false,
+ *      we pause immediately. (Visibility flips when switching tabs;
+ *      focus flips when the user clicks into another window.)
+ *
+ *   2. **Recent interaction** — at least one input event (mouse, keyboard,
+ *      scroll, touch) inside the last `SOFT_IDLE_MS`. Stops the clock
+ *      when the user walks away.
+ *
+ *   3. **Recent reading proof** — at least one *reading-specific* signal
+ *      in the last `READING_PROOF_MS`. Reading signals are explicit
+ *      indicators of progress: page turns and scrolls inside the reader
+ *      surface. Without one of these, the tracker enters a grace period
+ *      and after `READING_PROOF_MS` of nothing it pauses, even if the
+ *      mouse is moving. This is what stops "open book + tab parked"
+ *      from counting toward analytics.
+ *
+ * Mouse movement is filtered: micro twitches (< `MOUSE_NOISE_PX` between
+ * samples) are ignored so trackpad jitter or a sleeping mouse don't keep
+ * the soft-interaction timer alive.
+ *
+ * On unmount / book change / tab unload the accumulated session is
+ * flushed to the backend. Failed flushes are queued in localStorage and
+ * replayed on the next successful flush.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 
 const API_BASE_URL =
@@ -24,11 +42,26 @@ const API_BASE_URL =
 /** Sessions shorter than this are not persisted — they are accidental. */
 const MIN_FLUSH_SECONDS = 5;
 
-/** No interaction for this long → user is considered idle, timer pauses. */
-const IDLE_THRESHOLD_MS = 60_000;
+/** Soft idle — no interaction for this long pauses the clock. */
+const SOFT_IDLE_MS = 45_000;
+
+/**
+ * Reading-proof freshness — without a page turn / scroll-in-reader within
+ * this window we treat the user as not actively reading even if they're
+ * still wiggling the mouse. 3 minutes is generous enough to think between
+ * page turns but short enough that an abandoned tab stops counting fast.
+ */
+const READING_PROOF_MS = 3 * 60_000;
 
 /** Tick cadence of the active-time accumulator. */
 const TICK_MS = 1_000;
+
+/**
+ * Minimum pixels a mouse must travel between samples for the move to
+ * count as a real interaction. Filters out trackpad jitter / static
+ * mouse readings sent by some browsers when the OS is asleep.
+ */
+const MOUSE_NOISE_PX = 4;
 
 /** localStorage key for sessions that failed to flush online. */
 const QUEUE_KEY = "focushub:tracker:pending-sessions";
@@ -46,6 +79,15 @@ type PendingSession = {
   // The Clerk user ID at the time the session ended. The queue persists
   // across reloads so we need to remember which account it belongs to.
   user_id: string;
+};
+
+export type ReadingTrackerHandle = {
+  /**
+   * Call this from the reader whenever a strong "user is reading" signal
+   * happens — page turn, scroll within the document, zoom change. Without
+   * one of these within `READING_PROOF_MS` the tracker pauses.
+   */
+  notifyReadingActivity: () => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -112,7 +154,6 @@ async function postSession(payload: PendingSession): Promise<void> {
       keepalive: true,
     });
     if (!response.ok) throw new Error(`status ${response.status}`);
-    // Opportunistically drain any earlier queued sessions once we're back.
     void flushQueueToBackend();
   } catch {
     const queue = readQueue();
@@ -122,10 +163,9 @@ async function postSession(payload: PendingSession): Promise<void> {
 }
 
 /**
- * Best-effort flush during the unload path. Uses sendBeacon when available
- * because fetch/keepalive is unreliable on actual page unloads. sendBeacon
- * cannot set custom headers, so we pass the user ID as a query parameter
- * that the backend also accepts.
+ * Best-effort flush during the unload path. sendBeacon can't set headers
+ * so the user ID rides in the query string (the backend's auth dep
+ * accepts both header and ?user_id=).
  */
 function postSessionUnload(payload: PendingSession): void {
   const url = `${API_BASE_URL}/sessions?user_id=${encodeURIComponent(payload.user_id)}`;
@@ -141,7 +181,6 @@ function postSessionUnload(payload: PendingSession): void {
     }
   }
 
-  // Fallback: queue locally so next mount flushes it.
   const queue = readQueue();
   queue.push(payload);
   writeQueue(queue);
@@ -152,34 +191,38 @@ function postSessionUnload(payload: PendingSession): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Mount this hook on the reader page. It starts ticking active seconds the
- * moment a `bookId` is provided and flushes the session on unmount, book
- * change, or page unload.
+ * Mount this hook on the reader. It only counts seconds while the user
+ * is presently and actively reading — see the file header for the gates.
  *
- * `bookId` accepts a string (the frontend Book.id is a string) which is
- * coerced to int for the backend; pass `null` if you want the tracker to
- * stay paused (e.g. when no book is open).
+ * `bookId` accepts the frontend Book.id string (coerced to int for the
+ * backend); pass `null` to keep the tracker paused (e.g. when no book is
+ * open).
+ *
+ * The returned `notifyReadingActivity()` MUST be called by the reader on
+ * page changes (and ideally on scroll within the page surface). Without
+ * those signals the tracker assumes the user has stopped reading after
+ * `READING_PROOF_MS` and pauses.
  */
-export function useReadingSessionTracker(bookId: string | null): void {
+export function useReadingSessionTracker(
+  bookId: string | null,
+): ReadingTrackerHandle {
   const { userId, isLoaded } = useAuth();
   const userIdRef = useRef<string | null>(userId ?? null);
 
   // All state lives in refs so we don't trigger re-renders for every tick.
   const startedAtRef = useRef<Date | null>(null);
   const accumulatedRef = useRef<number>(0);
-  // Initialised inside the effect — `Date.now()` is impure and can't be
-  // called during render.
   const lastInteractionRef = useRef<number>(0);
+  const lastReadingProofRef = useRef<number>(0);
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
   const tickIdRef = useRef<number | null>(null);
   const bookIdRef = useRef<string | null>(bookId);
+  const notifyReadingRef = useRef<() => void>(() => {});
 
-  // Keep the ref in sync so closures inside the main effect always read the
-  // current user (e.g. if the user signs out mid-session).
   useEffect(() => {
     userIdRef.current = userId ?? null;
   }, [userId]);
 
-  // Flush pending queue once auth is ready. Cheap if it's empty.
   useEffect(() => {
     if (isLoaded && userId) {
       void flushQueueToBackend();
@@ -188,30 +231,104 @@ export function useReadingSessionTracker(bookId: string | null): void {
 
   useEffect(() => {
     bookIdRef.current = bookId;
-    if (!bookId || !isLoaded || !userId) return;
+    if (!bookId || !isLoaded || !userId) {
+      notifyReadingRef.current = () => {};
+      return;
+    }
 
-    // Reset session state on every fresh book.
+    // Reset session state on every fresh book. The clock does NOT start
+    // ticking until the first reading-proof signal fires — opening a book
+    // and walking away counts for zero seconds.
+    const now = Date.now();
     startedAtRef.current = new Date();
     accumulatedRef.current = 0;
-    lastInteractionRef.current = Date.now();
+    lastInteractionRef.current = now;
+    lastReadingProofRef.current = now;
+    lastMousePosRef.current = null;
+
+    // -----------------------------------------------------------------
+    // Signal handlers
+    // -----------------------------------------------------------------
 
     const markInteraction = () => {
       lastInteractionRef.current = Date.now();
     };
 
-    const isActive = (): boolean => {
+    const markReadingProof = () => {
+      const t = Date.now();
+      lastInteractionRef.current = t;
+      lastReadingProofRef.current = t;
+    };
+
+    notifyReadingRef.current = markReadingProof;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const prev = lastMousePosRef.current;
+      const curr = { x: event.clientX, y: event.clientY };
+      lastMousePosRef.current = curr;
+      if (prev) {
+        const dx = curr.x - prev.x;
+        const dy = curr.y - prev.y;
+        if (Math.hypot(dx, dy) < MOUSE_NOISE_PX) return;
+      }
+      markInteraction();
+    };
+
+    const handleWheel = () => {
+      // Wheel events inside the document almost always mean the user is
+      // scrolling the reader, so treat as a reading-proof signal.
+      markReadingProof();
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      // Page-nav keys are a strong reading signal. Other keys are just
+      // soft interaction.
+      const key = event.key;
+      if (
+        key === "ArrowDown" ||
+        key === "ArrowUp" ||
+        key === "ArrowLeft" ||
+        key === "ArrowRight" ||
+        key === "PageDown" ||
+        key === "PageUp" ||
+        key === " "
+      ) {
+        markReadingProof();
+      } else {
+        markInteraction();
+      }
+    };
+
+    // -----------------------------------------------------------------
+    // Gates & tick
+    // -----------------------------------------------------------------
+
+    const isPresent = (): boolean => {
       if (typeof document === "undefined") return false;
       if (document.visibilityState !== "visible") return false;
-      return Date.now() - lastInteractionRef.current < IDLE_THRESHOLD_MS;
+      // hasFocus is undefined in some test envs — default to true there.
+      return typeof document.hasFocus !== "function" || document.hasFocus();
+    };
+
+    const isActivelyReading = (): boolean => {
+      const t = Date.now();
+      if (!isPresent()) return false;
+      if (t - lastInteractionRef.current >= SOFT_IDLE_MS) return false;
+      if (t - lastReadingProofRef.current >= READING_PROOF_MS) return false;
+      return true;
     };
 
     const tick = () => {
-      if (isActive()) {
+      if (isActivelyReading()) {
         accumulatedRef.current += TICK_MS / 1000;
       }
     };
 
     tickIdRef.current = window.setInterval(tick, TICK_MS);
+
+    // -----------------------------------------------------------------
+    // Flushing
+    // -----------------------------------------------------------------
 
     const buildPayload = (): PendingSession | null => {
       const started = startedAtRef.current;
@@ -234,8 +351,6 @@ export function useReadingSessionTracker(bookId: string | null): void {
     const flush = (mode: "online" | "unload") => {
       const payload = buildPayload();
       if (!payload) return;
-      // Reset so a subsequent flush from a different code path doesn't
-      // double-count the same seconds.
       accumulatedRef.current = 0;
       startedAtRef.current = new Date();
       if (mode === "unload") {
@@ -246,18 +361,23 @@ export function useReadingSessionTracker(bookId: string | null): void {
     };
 
     const handleVisibility = () => {
-      // When the tab becomes hidden, lock in the work we've done so far
-      // — we may not get a chance later if the user closes the tab.
       if (document.visibilityState === "hidden") flush("online");
     };
-
+    const handleBlur = () => flush("online");
     const handleUnload = () => flush("unload");
 
-    window.addEventListener("mousemove", markInteraction, { passive: true });
-    window.addEventListener("keydown", markInteraction);
-    window.addEventListener("scroll", markInteraction, { passive: true });
+    // -----------------------------------------------------------------
+    // Listeners
+    // -----------------------------------------------------------------
+
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    window.addEventListener("keydown", handleKey);
+    window.addEventListener("scroll", markReadingProof, { passive: true });
+    window.addEventListener("wheel", handleWheel, { passive: true });
     window.addEventListener("touchstart", markInteraction, { passive: true });
+    window.addEventListener("touchmove", markReadingProof, { passive: true });
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("blur", handleBlur);
     window.addEventListener("pagehide", handleUnload);
     window.addEventListener("beforeunload", handleUnload);
 
@@ -266,14 +386,27 @@ export function useReadingSessionTracker(bookId: string | null): void {
         window.clearInterval(tickIdRef.current);
         tickIdRef.current = null;
       }
-      window.removeEventListener("mousemove", markInteraction);
-      window.removeEventListener("keydown", markInteraction);
-      window.removeEventListener("scroll", markInteraction);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("scroll", markReadingProof);
+      window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", markInteraction);
+      window.removeEventListener("touchmove", markReadingProof);
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("blur", handleBlur);
       window.removeEventListener("pagehide", handleUnload);
       window.removeEventListener("beforeunload", handleUnload);
+      notifyReadingRef.current = () => {};
       flush("online");
     };
   }, [bookId, isLoaded, userId]);
+
+  // Stable callback that always proxies to the current effect's
+  // markReadingProof. Callers can pass this into useEffect deps without
+  // re-subscribing to listeners every render.
+  const notifyReadingActivity = useCallback(() => {
+    notifyReadingRef.current();
+  }, []);
+
+  return { notifyReadingActivity };
 }

@@ -10,6 +10,7 @@ import { BooksLibrary } from "@/components/reading-mode/BooksLibrary";
 import { PdfReader } from "@/components/reading-mode/PdfReader";
 import { renderPdfThumbnail } from "@/lib/pdf";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
+import { markBookOpened, sortBooksByLastOpened } from "@/lib/last-opened";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { Book, StoredFile } from "@/types/book";
@@ -37,7 +38,7 @@ function mapStoredFileToBook(file: StoredFile): Book {
 
 export function ReadingModeClient() {
   const authedFetch = useAuthedFetch();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
   const [renamingBookId, setRenamingBookId] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export function ReadingModeClient() {
           .filter((file) => file.file_name.toLowerCase().endsWith(".pdf"))
           .map(mapStoredFileToBook);
 
-        setBooks(pdfBooks);
+        setBooks(sortBooksByLastOpened(pdfBooks, userId));
       } catch (error) {
         setErrorMessage(
           error instanceof Error
@@ -78,7 +79,7 @@ export function ReadingModeClient() {
     };
 
     void loadBooks();
-  }, [authedFetch, isLoaded, isSignedIn]);
+  }, [authedFetch, isLoaded, isSignedIn, userId]);
 
   const handleUpload = async (event: UploadSuccessEvent) => {
     const uploadedFile = event.successEntries[0];
@@ -121,7 +122,12 @@ export function ReadingModeClient() {
       const savedFile: StoredFile = await response.json();
       const savedBook = mapStoredFileToBook(savedFile);
 
-      setBooks((currentBooks) => [savedBook, ...currentBooks]);
+      // Opening immediately after upload, so stamp it as the most-recent
+      // open. That way returning to the library shows it on top.
+      markBookOpened(userId, savedBook.id);
+      setBooks((currentBooks) =>
+        sortBooksByLastOpened([savedBook, ...currentBooks], userId),
+      );
       setSelectedBook(savedBook);
     } catch (error) {
       setErrorMessage(
@@ -279,24 +285,26 @@ export function ReadingModeClient() {
                 <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-zinc-500">
                   Agrega un libro nuevo a tu biblioteca.
                 </p>
-                <div className="mt-4">
-                  {/* The FileUploaderRegular is overlaid invisibly on top of
-                      the visible pill. Because the pill has `pointer-events-none`,
-                      the `group` on the wrapper is what receives hover/active
-                      state from clicks, and propagates visual feedback to the
-                      pill below. Without this, the user sees NO reaction when
-                      clicking — a problem observed in usability testing. */}
+                <div className="isolate mt-6">
+                  {/* `isolate` + the wrapper's mt-6 keep the button's hover
+                      shadow halo from bleeding up behind the description
+                      text above. The FileUploaderRegular is overlaid invisibly
+                      on top of the visible pill — the pill has
+                      `pointer-events-none` so the wrapper's `group` state
+                      drives the hover/active feedback. Without this the
+                      user sees NO reaction when clicking (observed in
+                      usability testing). */}
                   <div
-                    className={`group relative inline-flex h-11 w-full max-w-52 overflow-hidden rounded-full ${
+                    className={`group relative isolate inline-flex h-11 w-full max-w-52 overflow-hidden rounded-full ${
                       isUploading ? "cursor-wait" : "cursor-pointer"
                     }`}
                     aria-busy={isUploading}
                   >
                     <div
-                      className={`pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-150 ${
+                      className={`pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-[0_6px_14px_rgba(15,23,42,0.05)] transition-all duration-150 ${
                         isUploading
                           ? "border-slate-300 bg-slate-100 text-slate-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
-                          : "border-slate-200 bg-white text-slate-900 group-hover:-translate-y-[1px] group-hover:border-slate-300 group-hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)] group-active:translate-y-0 group-active:bg-slate-50 group-active:shadow-[0_6px_14px_rgba(15,23,42,0.06)] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:group-active:bg-zinc-700"
+                          : "border-slate-200 bg-white text-slate-900 group-hover:border-slate-300 group-hover:bg-slate-50 group-active:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:group-hover:bg-zinc-700 dark:group-active:bg-zinc-700"
                       }`}
                     >
                       {isUploading ? (
@@ -360,7 +368,17 @@ export function ReadingModeClient() {
                 renamingBookId={renamingBookId}
                 isLoading={isLoadingBooks}
                 onDeleteBook={setBookToDelete}
-                onOpenBook={setSelectedBook}
+                onOpenBook={(book) => {
+                  // Stamp + re-sort so the next library visit shows this
+                  // book first. We mutate state before navigating so the
+                  // animated exit (BooksLibrary → PdfReader) doesn't
+                  // visibly shuffle the cards.
+                  markBookOpened(userId, book.id);
+                  setBooks((current) =>
+                    sortBooksByLastOpened(current, userId),
+                  );
+                  setSelectedBook(book);
+                }}
                 onRenameBook={handleRenameBook}
               />
             </section>

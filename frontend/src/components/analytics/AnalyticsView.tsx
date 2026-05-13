@@ -7,14 +7,14 @@ import { UserButton, useAuth } from "@clerk/nextjs";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
-import { StatsHero } from "@/components/analytics/StatsHero";
-import { DailyGoalCard } from "@/components/analytics/DailyGoalCard";
-import { StreakCard } from "@/components/analytics/StreakCard";
-import { WeeklyMilestonesRow } from "@/components/analytics/WeeklyMilestonesRow";
+import type { StoredFile } from "@/types/book";
+import { KpiStrip } from "@/components/analytics/KpiStrip";
+import { DailyGoalBar } from "@/components/analytics/DailyGoalBar";
 import { MinutesBarChart } from "@/components/analytics/MinutesBarChart";
 import { HeatmapCalendar } from "@/components/analytics/HeatmapCalendar";
-import { MilestonesGrid } from "@/components/analytics/MilestonesGrid";
 import { RecentSessionsList } from "@/components/analytics/RecentSessionsList";
+import { TrackingExplainer } from "@/components/analytics/TrackingExplainer";
+import { AchievementsBoard } from "@/components/analytics/AchievementsBoard";
 import {
   type ReadingSessionDTO,
   activeDateSet,
@@ -35,12 +35,12 @@ export function AnalyticsView() {
   const authedFetch = useAuthedFetch();
   const { isLoaded, isSignedIn, userId } = useAuth();
   const [sessions, setSessions] = useState<ReadingSessionDTO[]>([]);
+  const [bookNameById, setBookNameById] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [goals, setGoals] = useState<Goals>(() => readGoals(userId));
 
-  // Re-hydrate goals once the user ID is known (initial mount happens
-  // before Clerk hydrates on first paint).
+  // Re-hydrate goals once Clerk's userId resolves on first paint.
   useEffect(() => {
     if (isLoaded && userId) setGoals(readGoals(userId));
   }, [isLoaded, userId]);
@@ -50,18 +50,29 @@ export function AnalyticsView() {
     let cancelled = false;
     const load = async () => {
       try {
-        // We pull a 13-month window so the heatmap shows a full year and a
-        // little leading context for the current month.
         const since = new Date();
         since.setDate(since.getDate() - 400);
         const params = new URLSearchParams({ since: since.toISOString() });
-        const response = await authedFetch(
-          `${API_BASE_URL}/sessions?${params}`,
-          { cache: "no-store" },
-        );
-        if (!response.ok) throw new Error("No se pudo cargar la analítica.");
-        const data = (await response.json()) as ReadingSessionDTO[];
-        if (!cancelled) setSessions(data);
+        // Load sessions + files in parallel so the recent-sessions list can
+        // show real book titles instead of "Libro #N".
+        const [sessionsRes, filesRes] = await Promise.all([
+          authedFetch(`${API_BASE_URL}/sessions?${params}`, {
+            cache: "no-store",
+          }),
+          authedFetch(`${API_BASE_URL}/files`, { cache: "no-store" }),
+        ]);
+        if (!sessionsRes.ok)
+          throw new Error("No se pudo cargar la analítica.");
+        const data = (await sessionsRes.json()) as ReadingSessionDTO[];
+        const files: StoredFile[] = filesRes.ok ? await filesRes.json() : [];
+        const nameMap: Record<number, string> = {};
+        for (const f of files) {
+          nameMap[f.id] = (f.display_name ?? f.file_name).trim() || f.file_name;
+        }
+        if (!cancelled) {
+          setSessions(data);
+          setBookNameById(nameMap);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -83,10 +94,6 @@ export function AnalyticsView() {
     writeGoals(next, userId);
   };
 
-  // ---------------------------------------------------------------------
-  // Derived stats
-  // ---------------------------------------------------------------------
-
   const stats = useMemo(() => {
     const activeDates = activeDateSet(sessions);
     const last365 = buildDailyBuckets(sessions, 365);
@@ -98,18 +105,13 @@ export function AnalyticsView() {
     const totalMinutes = Math.round(
       last365.reduce((acc, b) => acc + b.seconds, 0) / 60,
     );
-    const weekMinutes = Math.round(
-      last7.reduce((acc, b) => acc + b.seconds, 0) / 60,
-    );
 
     return {
-      activeDates,
       last365,
       last30,
       last7,
       todayMinutes,
       totalMinutes,
-      weekMinutes,
       streak: currentStreak(activeDates),
       best: bestStreak(activeDates),
     };
@@ -125,17 +127,18 @@ export function AnalyticsView() {
         </div>
 
         <div className="min-w-0">
-          <header className="border-b border-slate-200/80 px-6 py-7 dark:border-zinc-800 sm:px-8 sm:py-8">
+          <header className="border-b border-slate-200/80 px-6 py-7 dark:border-zinc-800 sm:px-10 sm:py-9">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400 dark:text-zinc-500">
+                <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-slate-400 dark:text-zinc-500">
                   Analítica
                 </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-slate-950 dark:text-zinc-50 sm:text-4xl">
+                <h1 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-slate-950 dark:text-zinc-50 sm:text-[2.5rem]">
                   Tu progreso de lectura
                 </h1>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 dark:text-zinc-400 sm:text-lg">
-                  Métricas reales basadas en tiempo de lectura activa, no en tiempo en pantalla.
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 dark:text-zinc-500">
+                  Métricas basadas en tiempo de lectura activa, no en tiempo
+                  con el libro abierto.
                 </p>
               </div>
               <div className="mt-1 flex shrink-0 items-center gap-3">
@@ -146,8 +149,8 @@ export function AnalyticsView() {
           </header>
 
           {error && (
-            <div className="px-6 pt-6 sm:px-8">
-              <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+            <div className="px-6 pt-6 sm:px-10">
+              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </div>
             </div>
@@ -157,59 +160,45 @@ export function AnalyticsView() {
             initial="hidden"
             animate={isLoading ? "hidden" : "visible"}
             variants={{
-              hidden: { opacity: 0, y: 10 },
+              hidden: { opacity: 0 },
               visible: {
                 opacity: 1,
-                y: 0,
-                transition: { staggerChildren: 0.06, delayChildren: 0.05 },
+                transition: { staggerChildren: 0.08, delayChildren: 0.05 },
               },
             }}
-            className="space-y-6 px-6 py-7 sm:px-8 sm:py-8"
+            className="space-y-5 px-6 py-8 sm:space-y-6 sm:px-10 sm:py-10"
           >
-            <StatsHero
+            <KpiStrip
               todayMinutes={stats.todayMinutes}
-              weekMinutes={stats.weekMinutes}
-              totalMinutes={stats.totalMinutes}
               streak={stats.streak}
-              best={stats.best}
+              totalMinutes={stats.totalMinutes}
               isLoading={isLoading}
             />
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <DailyGoalCard
-                minutes={stats.todayMinutes}
-                goalMinutes={goals.dailyMinutes}
-                onChangeGoal={(dailyMinutes) =>
-                  updateGoals({ ...goals, dailyMinutes })
-                }
-              />
-              <StreakCard
-                current={stats.streak}
-                best={stats.best}
-                weekMinutes={stats.weekMinutes}
-              />
-            </div>
+            <TrackingExplainer />
 
-            <WeeklyMilestonesRow
-              buckets={stats.last7}
-              dailyGoalMinutes={goals.dailyMinutes}
-              weeklyGoalDays={goals.weeklyDays}
-              onChangeWeeklyGoal={(weeklyDays) =>
-                updateGoals({ ...goals, weeklyDays })
+            <DailyGoalBar
+              minutes={stats.todayMinutes}
+              goalMinutes={goals.dailyMinutes}
+              onChangeGoal={(dailyMinutes) =>
+                updateGoals({ ...goals, dailyMinutes })
               }
+            />
+
+            <AchievementsBoard
+              totalMinutes={stats.totalMinutes}
+              streak={stats.streak}
+              best={stats.best}
             />
 
             <MinutesBarChart buckets7={stats.last7} buckets30={stats.last30} />
 
             <HeatmapCalendar buckets365={stats.last365} />
 
-            <MilestonesGrid
-              streak={stats.streak}
-              best={stats.best}
-              totalMinutes={stats.totalMinutes}
+            <RecentSessionsList
+              sessions={sessions.slice(0, 6)}
+              bookNameById={bookNameById}
             />
-
-            <RecentSessionsList sessions={sessions.slice(0, 6)} />
           </motion.div>
         </div>
       </div>

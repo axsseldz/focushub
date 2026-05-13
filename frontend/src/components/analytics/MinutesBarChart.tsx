@@ -52,6 +52,7 @@ type ChartDatum = {
 
 export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
   const [range, setRange] = useState<Range>("7");
+  const [hoveredIso, setHoveredIso] = useState<string | null>(null);
   const { theme } = useTheme();
 
   const buckets = range === "7" ? buckets7 : buckets30;
@@ -67,29 +68,29 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
   return (
     <motion.section
       variants={cardVariants}
-      className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.04)] dark:border-zinc-800 dark:bg-zinc-900 sm:p-7"
+      className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
     >
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-[-0.02em] text-slate-950 dark:text-zinc-50">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-zinc-500">
             Minutos por día
-          </h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
-            Tiempo de lectura activa, agregado por día
+          </p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-zinc-600">
+            Tiempo de lectura activa
           </p>
         </div>
 
-        <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800">
+        <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-800">
           {(["7", "30"] as const).map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => setRange(r)}
               aria-pressed={range === r}
-              className={`rounded-full px-3 py-1 transition-colors ${
+              className={`rounded px-2.5 py-1 transition-colors ${
                 range === r
                   ? "bg-white text-slate-950 shadow-sm dark:bg-zinc-900 dark:text-zinc-50"
-                  : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               }`}
             >
               {r === "7" ? "7 días" : "30 días"}
@@ -98,17 +99,29 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
         </div>
       </div>
 
-      <div className="h-[220px] w-full">
+      <div className="h-[240px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
-            margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
-            barCategoryGap={range === "7" ? "20%" : "12%"}
+            margin={{ top: 12, right: 8, bottom: 0, left: 4 }}
+            barCategoryGap={range === "7" ? "22%" : "14%"}
+            onMouseMove={(state) => {
+              // Recharts' MouseHandlerDataParam doesn't expose activePayload
+              // in its public type yet, so we read it through a cast.
+              const payload = (state as { activePayload?: { payload?: ChartDatum }[] })
+                ?.activePayload?.[0]?.payload;
+              setHoveredIso(payload?.iso ?? null);
+            }}
+            onMouseLeave={() => setHoveredIso(null)}
           >
             <defs>
               <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={isDark ? "#a78bfa" : "#7c3aed"} stopOpacity={0.95} />
-                <stop offset="100%" stopColor={isDark ? "#6366f1" : "#6366f1"} stopOpacity={0.85} />
+                <stop offset="0%" stopColor={isDark ? "#fafafa" : "#0f172a"} stopOpacity={0.95} />
+                <stop offset="100%" stopColor={isDark ? "#a1a1aa" : "#334155"} stopOpacity={0.85} />
+              </linearGradient>
+              <linearGradient id="barFillHover" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isDark ? "#a7f3d0" : "#10b981"} stopOpacity={1} />
+                <stop offset="100%" stopColor={isDark ? "#34d399" : "#059669"} stopOpacity={1} />
               </linearGradient>
               <linearGradient id="barFillEmpty" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={isDark ? "#3f3f46" : "#e2e8f0"} stopOpacity={0.7} />
@@ -125,6 +138,7 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
               axisLine={false}
               tickLine={false}
               interval={range === "30" ? 3 : 0}
+              tickMargin={6}
               tick={{
                 fontSize: 11,
                 fill: isDark ? "#a1a1aa" : "#64748b",
@@ -133,24 +147,34 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
             <YAxis
               axisLine={false}
               tickLine={false}
-              width={36}
+              width={44}
+              tickMargin={4}
               tick={{
                 fontSize: 11,
                 fill: isDark ? "#a1a1aa" : "#64748b",
               }}
-              tickFormatter={(value: number) => `${value}m`}
+              tickFormatter={(value: number) => `${value} m`}
             />
             <Tooltip
               cursor={{ fill: isDark ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.04)" }}
               content={ChartTooltip}
+              animationDuration={150}
             />
-            <Bar dataKey="minutes" radius={[8, 8, 4, 4]}>
-              {data.map((d) => (
-                <Cell
-                  key={d.iso}
-                  fill={d.minutes === 0 ? "url(#barFillEmpty)" : "url(#barFill)"}
-                />
-              ))}
+            <Bar
+              dataKey="minutes"
+              radius={[8, 8, 4, 4]}
+              animationDuration={900}
+              animationEasing="ease-out"
+            >
+              {data.map((d) => {
+                const isHovered = hoveredIso === d.iso;
+                const fill = d.minutes === 0
+                  ? "url(#barFillEmpty)"
+                  : isHovered
+                    ? "url(#barFillHover)"
+                    : "url(#barFill)";
+                return <Cell key={d.iso} fill={fill} />;
+              })}
             </Bar>
           </BarChart>
         </ResponsiveContainer>

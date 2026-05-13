@@ -99,39 +99,35 @@ export function HeatmapCalendar({ buckets365 }: HeatmapCalendarProps) {
   return (
     <motion.section
       variants={cardVariants}
-      className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.04)] dark:border-zinc-800 dark:bg-zinc-900 sm:p-7"
+      className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
     >
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-[-0.02em] text-slate-950 dark:text-zinc-50">
-            Mapa anual de constancia
-          </h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
-            Cada celda es un día. Más oscuro = más minutos de lectura activa.
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-zinc-500">
+            Mapa anual
+          </p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-zinc-600">
+            Cada celda es un día — más oscuro = más minutos.
           </p>
         </div>
-        <div className="flex items-center gap-4 text-right">
+        <div className="flex items-baseline gap-5 text-right text-xs">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-500">
-              Días activos
-            </p>
-            <p className="text-base font-semibold tabular-nums text-slate-950 dark:text-zinc-50">
+            <p className="text-slate-400 dark:text-zinc-600">Días activos</p>
+            <p className="mt-0.5 text-base font-semibold tabular-nums text-slate-950 dark:text-zinc-50">
               {totalActiveDays}
             </p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-500">
-              Minutos
-            </p>
-            <p className="text-base font-semibold tabular-nums text-slate-950 dark:text-zinc-50">
+            <p className="text-slate-400 dark:text-zinc-600">Minutos</p>
+            <p className="mt-0.5 text-base font-semibold tabular-nums text-slate-950 dark:text-zinc-50">
               {totalMinutes}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-2">
-        <div className="inline-block min-w-full">
+      <div className="flex justify-center overflow-x-auto pb-2">
+        <div className="inline-flex flex-col items-start">
           {/* Month header row */}
           <div className="ml-7 mb-2 flex text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">
             {grid.map((_, weekIndex) => {
@@ -171,22 +167,33 @@ export function HeatmapCalendar({ buckets365 }: HeatmapCalendarProps) {
                       return <span key={di} className="h-3 w-3 rounded-[3px] opacity-0" />;
                     }
                     const tier = intensity(cell.seconds);
+                    const isHovered = hovered?.iso === cell.iso;
                     return (
                       <motion.span
                         key={cell.iso}
                         initial={{ scale: 0.6, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.18, delay: Math.min(0.001 * (wi * 7 + di), 0.5) }}
+                        animate={{
+                          scale: isHovered ? 1.45 : 1,
+                          opacity: 1,
+                        }}
+                        transition={{
+                          duration: isHovered ? 0.18 : 0.18,
+                          delay: isHovered
+                            ? 0
+                            : Math.min(0.001 * (wi * 7 + di), 0.5),
+                          ease: "easeOut",
+                        }}
                         onMouseEnter={() => setHovered(cell)}
                         onMouseLeave={() =>
-                          setHovered((current) => (current?.iso === cell.iso ? null : current))
+                          setHovered((current) =>
+                            current?.iso === cell.iso ? null : current,
+                          )
                         }
-                        className={`h-3 w-3 rounded-[3px] ${TIER_CLASSES[tier]} ${
-                          hovered?.iso === cell.iso
-                            ? "ring-2 ring-offset-1 ring-emerald-400 ring-offset-white dark:ring-offset-zinc-900"
+                        className={`relative h-3 w-3 cursor-pointer rounded-[3px] ${TIER_CLASSES[tier]} ${
+                          isHovered
+                            ? "z-10 shadow-[0_4px_12px_rgba(16,185,129,0.4)] ring-2 ring-emerald-400 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900"
                             : ""
                         }`}
-                        title={`${cell.iso}: ${Math.round(cell.seconds / 60)} min`}
                         role="img"
                         aria-label={`${cell.iso}: ${Math.round(cell.seconds / 60)} minutos`}
                       />
