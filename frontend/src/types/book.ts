@@ -3,6 +3,7 @@ export type Book = {
   fileUrl: string;
   filename: string;
   id: string;
+  pageCount: number | null;
   thumbnailUrl: string | null;
   uploadedAt: string;
 };
@@ -13,5 +14,6 @@ export type StoredFile = {
   file_name: string;
   file_url: string;
   id: number;
+  page_count: number | null;
   thumbnail_url: string | null;
 };

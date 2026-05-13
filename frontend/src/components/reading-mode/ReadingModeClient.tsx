@@ -6,6 +6,7 @@ import "@uploadcare/react-uploader/core.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { UserButton, useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { BooksLibrary } from "@/components/reading-mode/BooksLibrary";
 import { PdfReader } from "@/components/reading-mode/PdfReader";
 import { renderPdfThumbnail } from "@/lib/pdf";
@@ -32,6 +33,7 @@ function mapStoredFileToBook(file: StoredFile): Book {
     displayName: file.display_name,
     fileUrl: file.file_url,
     thumbnailUrl: file.thumbnail_url,
+    pageCount: file.page_count ?? null,
     uploadedAt: file.created_at,
   };
 }
@@ -46,7 +48,6 @@ export function ReadingModeClient() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -68,7 +69,7 @@ export function ReadingModeClient() {
 
         setBooks(sortBooksByLastOpened(pdfBooks, userId));
       } catch (error) {
-        setErrorMessage(
+        toast.error(
           error instanceof Error
             ? error.message
             : "No se pudo cargar la biblioteca.",
@@ -85,7 +86,7 @@ export function ReadingModeClient() {
     const uploadedFile = event.successEntries[0];
 
     if (!uploadedFile) {
-      setErrorMessage("No se pudo obtener la información del archivo.");
+      toast.error("No se pudo obtener la información del archivo.");
       return;
     }
 
@@ -94,12 +95,11 @@ export function ReadingModeClient() {
       uploadedFile.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
-      setErrorMessage("Solo se permiten archivos PDF en Modo Lectura.");
+      toast.error("Solo se permiten archivos PDF en Modo Lectura.");
       return;
     }
 
     setIsUploading(true);
-    setErrorMessage(null);
 
     try {
       const thumbnailUrl = await renderPdfThumbnail(uploadedFile.cdnUrl);
@@ -129,8 +129,9 @@ export function ReadingModeClient() {
         sortBooksByLastOpened([savedBook, ...currentBooks], userId),
       );
       setSelectedBook(savedBook);
+      toast.success("Libro agregado a tu biblioteca.");
     } catch (error) {
-      setErrorMessage(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Ocurrió un error al subir el libro.",
@@ -146,7 +147,6 @@ export function ReadingModeClient() {
     if (!trimmed || trimmed === currentTitle) return;
 
     setRenamingBookId(book.id);
-    setErrorMessage(null);
 
     try {
       const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
@@ -172,8 +172,9 @@ export function ReadingModeClient() {
       setSelectedBook((current) =>
         current?.id === book.id ? updatedBook : current,
       );
+      toast.success("Título actualizado.");
     } catch (error) {
-      setErrorMessage(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Ocurrió un error al actualizar el título.",
@@ -185,7 +186,6 @@ export function ReadingModeClient() {
 
   const handleDeleteBook = async (book: Book) => {
     setDeletingBookId(book.id);
-    setErrorMessage(null);
 
     try {
       const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
@@ -202,8 +202,9 @@ export function ReadingModeClient() {
       if (selectedBook?.id === book.id) {
         setSelectedBook(null);
       }
+      toast.success("Libro eliminado.");
     } catch (error) {
-      setErrorMessage(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Ocurrió un error al eliminar el libro.",
@@ -237,6 +238,18 @@ export function ReadingModeClient() {
             key={selectedBook.id}
             book={selectedBook}
             onBack={() => setSelectedBook(null)}
+            onPageCountResolved={(pageCount) => {
+              setBooks((current) =>
+                current.map((b) =>
+                  b.id === selectedBook.id ? { ...b, pageCount } : b,
+                ),
+              );
+              setSelectedBook((current) =>
+                current && current.id === selectedBook.id
+                  ? { ...current, pageCount }
+                  : current,
+              );
+            }}
           />
         ) : (
           <motion.section
@@ -331,10 +344,7 @@ export function ReadingModeClient() {
                         imgOnly={false}
                         accept="application/pdf,.pdf"
                         multiple={false}
-                        onCommonUploadStart={() => {
-                          setIsUploading(true);
-                          setErrorMessage(null);
-                        }}
+                        onCommonUploadStart={() => setIsUploading(true)}
                         onCommonUploadFailed={() => setIsUploading(false)}
                         onCommonUploadSuccess={handleUpload}
                       />
@@ -354,14 +364,6 @@ export function ReadingModeClient() {
             </header>
 
             <section className="py-10">
-              <div className="mb-7">
-                {errorMessage ? (
-                  <p className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {errorMessage}
-                  </p>
-                ) : null}
-              </div>
-
               <BooksLibrary
                 books={books}
                 deletingBookId={deletingBookId}

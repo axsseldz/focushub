@@ -56,6 +56,10 @@ def ensure_database_schema() -> None:
                 connection.execute(
                     text("ALTER TABLE files ADD COLUMN thumbnail_url VARCHAR"),
                 )
+            if "page_count" not in columns:
+                connection.execute(
+                    text("ALTER TABLE files ADD COLUMN page_count INTEGER"),
+                )
             if "display_name" not in columns:
                 connection.execute(
                     text("ALTER TABLE files ADD COLUMN display_name VARCHAR"),

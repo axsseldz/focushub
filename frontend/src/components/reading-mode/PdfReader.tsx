@@ -9,6 +9,7 @@ import { GestureCamera } from "@/components/reading-mode/GestureCamera";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useFocusMode } from "@/lib/focus-mode";
 import { useReadingSessionTracker } from "@/lib/reading-tracker";
+import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,6 +18,7 @@ import { useReadingSessionTracker } from "@/lib/reading-tracker";
 type PdfReaderProps = {
   book: Book;
   onBack: () => void;
+  onPageCountResolved?: (pageCount: number) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -30,6 +32,44 @@ function readSavedPage(bookId: string): number {
   const raw = window.localStorage.getItem(PAGE_STORAGE_KEY(bookId));
   const parsed = raw ? Number.parseInt(raw, 10) : 1;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+// Reader comfort tone. Applies a CSS filter only to the rendered PDF
+// canvas — the rest of the UI continues to follow the global light/dark
+// theme. Persisted globally per browser, not per book: people tend to
+// pick one comfortable tone and stick with it.
+type ReaderTone = "light" | "sepia" | "dark";
+const TONE_STORAGE_KEY = "focushub:readerTone";
+const TONE_ORDER: readonly ReaderTone[] = ["light", "sepia", "dark"] as const;
+
+function readSavedTone(): ReaderTone {
+  if (typeof window === "undefined") return "light";
+  const raw = window.localStorage.getItem(TONE_STORAGE_KEY);
+  return raw === "sepia" || raw === "dark" ? raw : "light";
+}
+
+function toneFilter(tone: ReaderTone): string {
+  switch (tone) {
+    case "sepia":
+      return "sepia(0.45) saturate(0.85) brightness(0.98)";
+    case "dark":
+      // invert + hue-rotate flips lightness while keeping colour
+      // perception roughly intact — the standard PDF dark-mode recipe.
+      return "invert(0.92) hue-rotate(180deg)";
+    default:
+      return "none";
+  }
+}
+
+function toneLabel(tone: ReaderTone): string {
+  switch (tone) {
+    case "sepia":
+      return "Sepia";
+    case "dark":
+      return "Noche";
+    default:
+      return "Día";
+  }
 }
 
 /**
@@ -51,7 +91,8 @@ function nextZoomDown(current: number): number {
   return best;
 }
 
-export function PdfReader({ book, onBack }: PdfReaderProps) {
+export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps) {
+  const authedFetch = useAuthedFetch();
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [pageRatio, setPageRatio] = useState<number | null>(null); // width / height
@@ -62,6 +103,26 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [gestureEnabled, setGestureEnabled] = useState(false);
+  // SSR-safe initial value; the real tone is restored on mount. Without
+  // this guard the first paint would always be "Día" even for users who
+  // picked Sepia/Noche, causing a visible flash.
+  const [tone, setTone] = useState<ReaderTone>("light");
+  useEffect(() => {
+    setTone(readSavedTone());
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TONE_STORAGE_KEY, tone);
+    } catch {
+      // Ignore storage failures (quota, private mode, etc.)
+    }
+  }, [tone]);
+  const cycleTone = useCallback(() => {
+    setTone((current) => {
+      const next = TONE_ORDER[(TONE_ORDER.indexOf(current) + 1) % TONE_ORDER.length];
+      return next;
+    });
+  }, []);
 
   const zoomIn = useCallback(
     () => setZoom((z) => nextZoomUp(z)),
@@ -380,6 +441,23 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
 
+            {/* Reading comfort tone — cycles light → sepia → dark. Affects
+                only the PDF canvas (via CSS filter), not the surrounding UI. */}
+            {isLoaded && (
+              <button
+                type="button"
+                onClick={cycleTone}
+                aria-label={`Tono de lectura: ${toneLabel(tone)}`}
+                title="Cambiar tono de lectura"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                <ToneIcon tone={tone} />
+                {toneLabel(tone)}
+              </button>
+            )}
+
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
+
             {/* Gesture toggle */}
             <button
               type="button"
@@ -451,6 +529,25 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   if (clamped > 1) setResumedFromPage(clamped);
                   return clamped;
                 });
+                // Persist page_count on the backend the first time we see
+                // a value (or when it has drifted). Used by the library to
+                // render a per-book reading-progress bar. Best-effort:
+                // failure here must not interrupt reading.
+                if (total > 0 && book.pageCount !== total) {
+                  void authedFetch(`${API_BASE_URL}/files/${book.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ page_count: total }),
+                  })
+                    .then((res) => {
+                      if (res.ok) onPageCountResolved?.(total);
+                    })
+                    .catch(() => {
+                      // Network-level failure: silently ignore; next open
+                      // will retry. No user-facing toast — this is a
+                      // background sync, not an explicit user action.
+                    });
+                }
               }}
               error={
                 <div className="rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
@@ -469,11 +566,12 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
                   className="flex justify-center"
                 >
                   <div
-                    className={`overflow-hidden rounded-[1.75rem] border transition-colors duration-500 ${
+                    className={`overflow-hidden rounded-[1.75rem] border transition-[background-color,filter] duration-500 ${
                       focusEnabled
                         ? "border-white/5 bg-zinc-900 shadow-none"
                         : "border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900"
                     }`}
+                    style={{ filter: toneFilter(tone) }}
                   >
                     <Page
                       pageNumber={currentPage}
@@ -689,6 +787,46 @@ function ChevronDownIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.7"
+      />
+    </svg>
+  );
+}
+
+function ToneIcon({ tone }: { tone: ReaderTone }) {
+  if (tone === "dark") {
+    return (
+      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+        <path
+          d="M20.25 14.5A8 8 0 0 1 9.5 3.75 8 8 0 1 0 20.25 14.5Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.6"
+        />
+      </svg>
+    );
+  }
+  if (tone === "sepia") {
+    return (
+      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+        <path
+          d="M6.5 4.75h9.25a3 3 0 0 1 3 3v11.5H9a2.5 2.5 0 0 1-2.5-2.5V4.75ZM6.5 16.75A2.5 2.5 0 0 0 4 19.25h13.75"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.6"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 3v2.25M12 18.75V21M3 12h2.25M18.75 12H21M5.75 5.75l1.6 1.6M16.65 16.65l1.6 1.6M5.75 18.25l1.6-1.6M16.65 7.35l1.6-1.6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.6"
       />
     </svg>
   );

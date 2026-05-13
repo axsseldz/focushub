@@ -4,6 +4,7 @@ import { esES } from "@clerk/localizations";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
 import { FocusModeProvider } from "@/lib/focus-mode";
+import { ToasterMount } from "@/components/ToasterMount";
 
 export const metadata: Metadata = {
   title: "FocusHub",
@@ -42,6 +43,7 @@ export default function RootLayout({
         >
           <ThemeProvider>
             <FocusModeProvider>{children}</FocusModeProvider>
+            <ToasterMount />
           </ThemeProvider>
         </ClerkProvider>
       </body>

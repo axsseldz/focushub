@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PdfThumbnail } from "@/components/reading-mode/PdfThumbnail";
 import type { Book } from "@/types/book";
 
@@ -27,6 +27,22 @@ function formatPacificDate(dateValue: string) {
   }).format(new Date(normalizedDate));
 }
 
+// Mirrors the key used by PdfReader to persist the last-read page per book.
+// Reading from the same key lets the library render a progress bar that
+// stays in sync with the reader without any extra plumbing.
+function readSavedPage(bookId: string): number {
+  if (typeof window === "undefined") return 1;
+  const raw = window.localStorage.getItem(`focushub:lastPage:${bookId}`);
+  const parsed = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function subscribeToStorage(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
 export function BookCard({
   book,
   isDeleting = false,
@@ -39,6 +55,24 @@ export function BookCard({
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(displayTitle);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // SSR-safe subscription to localStorage. Returns null on the server
+  // (no progress bar rendered during SSR), then resolves to the saved
+  // page on client. Cross-tab `storage` events keep the bar in sync if
+  // the same book is opened in another tab.
+  const getSnapshot = useCallback(() => readSavedPage(book.id), [book.id]);
+  const currentPage = useSyncExternalStore(
+    subscribeToStorage,
+    getSnapshot,
+    () => null,
+  );
+
+  const total = book.pageCount ?? null;
+  const hasProgress = total !== null && currentPage !== null && total > 0;
+  const progressRatio = hasProgress
+    ? Math.min(1, Math.max(0, currentPage / total))
+    : 0;
+  const progressPercent = Math.round(progressRatio * 100);
 
   const startEditing = () => {
     setDraftTitle(displayTitle);
@@ -175,6 +209,33 @@ export function BookCard({
           </button>
         )}
       </div>
+
+      {hasProgress && !isEditing ? (
+        <div
+          className="mt-1 space-y-1.5"
+          aria-label={`Progreso de lectura: ${progressPercent}%`}
+          title={`Página ${currentPage} de ${total} · ${progressPercent}%`}
+        >
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+            <span className="tabular-nums">
+              Página {currentPage} de {total}
+            </span>
+            <span className="tabular-nums">{progressPercent}%</span>
+          </div>
+          <div
+            className="h-1 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+          >
+            <div
+              className="h-full rounded-full bg-slate-900 transition-[width] duration-500 ease-out dark:bg-zinc-200"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
     </motion.article>
   );
 }

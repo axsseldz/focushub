@@ -59,7 +59,10 @@ def update_file(
     # Rename updates the user-facing display name only. The original
     # `file_name` is preserved so the library filter (which trusts the
     # original extension) keeps working after a rename.
-    db_file.display_name = file_in.display_name.strip() or None
+    if file_in.display_name is not None:
+        db_file.display_name = file_in.display_name.strip() or None
+    if file_in.page_count is not None:
+        db_file.page_count = file_in.page_count
     db.commit()
     db.refresh(db_file)
     return db_file

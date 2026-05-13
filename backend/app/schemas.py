@@ -10,7 +10,14 @@ class FileCreate(BaseModel):
 
 
 class FileUpdate(BaseModel):
-    display_name: str = Field(min_length=1, max_length=255)
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    page_count: int | None = Field(default=None, ge=1, le=100_000)
+
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> "FileUpdate":
+        if self.display_name is None and self.page_count is None:
+            raise ValueError("Debe enviarse al menos un campo a actualizar.")
+        return self
 
 
 class FileResponse(BaseModel):
@@ -21,6 +28,7 @@ class FileResponse(BaseModel):
     file_name: str
     display_name: str | None
     thumbnail_url: str | None
+    page_count: int | None
     created_at: datetime
 
 
