@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -42,6 +43,9 @@ type PendingSession = {
   ended_at: string;
   duration_seconds: number;
   pages_read?: number | null;
+  // The Clerk user ID at the time the session ended. The queue persists
+  // across reloads so we need to remember which account it belongs to.
+  user_id: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -78,7 +82,10 @@ async function flushQueueToBackend(): Promise<void> {
     try {
       const response = await fetch(`${API_BASE_URL}/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": session.user_id,
+        },
         body: JSON.stringify(session),
         keepalive: true,
       });
@@ -97,7 +104,10 @@ async function postSession(payload: PendingSession): Promise<void> {
   try {
     const response = await fetch(`${API_BASE_URL}/sessions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": payload.user_id,
+      },
       body: JSON.stringify(payload),
       keepalive: true,
     });
@@ -113,10 +123,12 @@ async function postSession(payload: PendingSession): Promise<void> {
 
 /**
  * Best-effort flush during the unload path. Uses sendBeacon when available
- * because fetch/keepalive is unreliable on actual page unloads.
+ * because fetch/keepalive is unreliable on actual page unloads. sendBeacon
+ * cannot set custom headers, so we pass the user ID as a query parameter
+ * that the backend also accepts.
  */
 function postSessionUnload(payload: PendingSession): void {
-  const url = `${API_BASE_URL}/sessions`;
+  const url = `${API_BASE_URL}/sessions?user_id=${encodeURIComponent(payload.user_id)}`;
   const body = JSON.stringify(payload);
 
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
@@ -149,6 +161,9 @@ function postSessionUnload(payload: PendingSession): void {
  * stay paused (e.g. when no book is open).
  */
 export function useReadingSessionTracker(bookId: string | null): void {
+  const { userId, isLoaded } = useAuth();
+  const userIdRef = useRef<string | null>(userId ?? null);
+
   // All state lives in refs so we don't trigger re-renders for every tick.
   const startedAtRef = useRef<Date | null>(null);
   const accumulatedRef = useRef<number>(0);
@@ -158,14 +173,22 @@ export function useReadingSessionTracker(bookId: string | null): void {
   const tickIdRef = useRef<number | null>(null);
   const bookIdRef = useRef<string | null>(bookId);
 
-  // Flush pending queue once on mount. Cheap if it's empty.
+  // Keep the ref in sync so closures inside the main effect always read the
+  // current user (e.g. if the user signs out mid-session).
   useEffect(() => {
-    void flushQueueToBackend();
-  }, []);
+    userIdRef.current = userId ?? null;
+  }, [userId]);
+
+  // Flush pending queue once auth is ready. Cheap if it's empty.
+  useEffect(() => {
+    if (isLoaded && userId) {
+      void flushQueueToBackend();
+    }
+  }, [isLoaded, userId]);
 
   useEffect(() => {
     bookIdRef.current = bookId;
-    if (!bookId) return;
+    if (!bookId || !isLoaded || !userId) return;
 
     // Reset session state on every fresh book.
     startedAtRef.current = new Date();
@@ -193,7 +216,10 @@ export function useReadingSessionTracker(bookId: string | null): void {
     const buildPayload = (): PendingSession | null => {
       const started = startedAtRef.current;
       const duration = Math.round(accumulatedRef.current);
-      if (!started || duration < MIN_FLUSH_SECONDS) return null;
+      const currentUserId = userIdRef.current;
+      if (!started || duration < MIN_FLUSH_SECONDS || !currentUserId) {
+        return null;
+      }
       const numericBookId = Number.parseInt(bookIdRef.current ?? "", 10);
       return {
         book_id: Number.isFinite(numericBookId) ? numericBookId : null,
@@ -201,6 +227,7 @@ export function useReadingSessionTracker(bookId: string | null): void {
         ended_at: new Date().toISOString(),
         duration_seconds: duration,
         pages_read: null,
+        user_id: currentUserId,
       };
     };
 
@@ -248,5 +275,5 @@ export function useReadingSessionTracker(bookId: string | null): void {
       window.removeEventListener("beforeunload", handleUnload);
       flush("online");
     };
-  }, [bookId]);
+  }, [bookId, isLoaded, userId]);
 }

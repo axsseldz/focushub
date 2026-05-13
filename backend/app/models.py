@@ -10,6 +10,7 @@ class File(Base):
     __tablename__ = "files"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     file_url: Mapped[str] = mapped_column(String, nullable=False)
     file_name: Mapped[str] = mapped_column(String, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -27,12 +28,14 @@ class ReadingSession(Base):
     the tab is visible and the user has been recently interactive, so the
     duration here reflects engaged time, not wall-clock time.
 
-    The `book_id` is stored as a plain integer rather than a foreign key so
-    historical sessions stay accessible after a book is deleted."""
+    The `book_id` is stored as a plain integer rather than a foreign key.
+    The files DELETE route cleans up matching sessions explicitly so
+    analytics stays consistent with the user's current library."""
 
     __tablename__ = "reading_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     book_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

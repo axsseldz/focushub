@@ -39,36 +39,83 @@ _KNOWN_EXTENSIONS = (
 )
 
 
+# Pre-Clerk rows belong to no specific user. We tag them with this sentinel
+# so the column can be NOT NULL going forward; legacy rows remain visible only
+# under this owner string (effectively orphaned from the multi-user app).
+_LEGACY_USER_ID = "legacy"
+
+
 def ensure_database_schema() -> None:
     with engine.begin() as connection:
         inspector = inspect(connection)
-        if "files" not in inspector.get_table_names():
-            return
+        tables = set(inspector.get_table_names())
 
-        columns = {column["name"] for column in inspector.get_columns("files")}
-        if "thumbnail_url" not in columns:
-            connection.execute(text("ALTER TABLE files ADD COLUMN thumbnail_url VARCHAR"))
-        if "display_name" not in columns:
-            connection.execute(text("ALTER TABLE files ADD COLUMN display_name VARCHAR"))
+        if "files" in tables:
+            columns = {column["name"] for column in inspector.get_columns("files")}
+            if "thumbnail_url" not in columns:
+                connection.execute(
+                    text("ALTER TABLE files ADD COLUMN thumbnail_url VARCHAR"),
+                )
+            if "display_name" not in columns:
+                connection.execute(
+                    text("ALTER TABLE files ADD COLUMN display_name VARCHAR"),
+                )
 
-            # Rescue rows whose file_name was mutated by the pre-display_name
-            # rename flow: if a row's file_name has no recognizable extension
-            # it is almost certainly a renamed PDF that got filtered out of
-            # the library. Preserve the rename in display_name and restore a
-            # .pdf suffix so the row re-appears.
-            rows = connection.execute(
-                text("SELECT id, file_name FROM files"),
-            ).fetchall()
-            for row in rows:
-                name = (row.file_name or "").strip()
-                if not name:
-                    continue
-                if name.lower().endswith(_KNOWN_EXTENSIONS):
-                    continue
+                # Rescue rows whose file_name was mutated by the pre-display_name
+                # rename flow: if a row's file_name has no recognizable extension
+                # it is almost certainly a renamed PDF that got filtered out of
+                # the library. Preserve the rename in display_name and restore a
+                # .pdf suffix so the row re-appears.
+                rows = connection.execute(
+                    text("SELECT id, file_name FROM files"),
+                ).fetchall()
+                for row in rows:
+                    name = (row.file_name or "").strip()
+                    if not name:
+                        continue
+                    if name.lower().endswith(_KNOWN_EXTENSIONS):
+                        continue
+                    connection.execute(
+                        text(
+                            "UPDATE files SET display_name = :dn, file_name = :fn "
+                            "WHERE id = :id",
+                        ),
+                        {"dn": name, "fn": f"{name}.pdf", "id": row.id},
+                    )
+
+            if "user_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE files ADD COLUMN user_id VARCHAR"),
+                )
                 connection.execute(
                     text(
-                        "UPDATE files SET display_name = :dn, file_name = :fn "
-                        "WHERE id = :id",
+                        "UPDATE files SET user_id = :uid WHERE user_id IS NULL",
                     ),
-                    {"dn": name, "fn": f"{name}.pdf", "id": row.id},
+                    {"uid": _LEGACY_USER_ID},
+                )
+                connection.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_files_user_id ON files(user_id)"),
+                )
+
+        if "reading_sessions" in tables:
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("reading_sessions")
+            }
+            if "user_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE reading_sessions ADD COLUMN user_id VARCHAR"),
+                )
+                connection.execute(
+                    text(
+                        "UPDATE reading_sessions SET user_id = :uid "
+                        "WHERE user_id IS NULL",
+                    ),
+                    {"uid": _LEGACY_USER_ID},
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_reading_sessions_user_id "
+                        "ON reading_sessions(user_id)",
+                    ),
                 )

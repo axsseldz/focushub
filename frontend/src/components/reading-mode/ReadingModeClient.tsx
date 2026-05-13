@@ -5,9 +5,11 @@ import { FileUploaderRegular } from "@uploadcare/react-uploader/next";
 import "@uploadcare/react-uploader/core.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { UserButton, useAuth } from "@clerk/nextjs";
 import { BooksLibrary } from "@/components/reading-mode/BooksLibrary";
 import { PdfReader } from "@/components/reading-mode/PdfReader";
 import { renderPdfThumbnail } from "@/lib/pdf";
+import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { Book, StoredFile } from "@/types/book";
@@ -22,9 +24,6 @@ type UploadSuccessEvent = {
   successEntries: UploadedEntry[];
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-
 function mapStoredFileToBook(file: StoredFile): Book {
   return {
     id: String(file.id),
@@ -37,6 +36,8 @@ function mapStoredFileToBook(file: StoredFile): Book {
 }
 
 export function ReadingModeClient() {
+  const authedFetch = useAuthedFetch();
+  const { isLoaded, isSignedIn } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
   const [renamingBookId, setRenamingBookId] = useState<string | null>(null);
@@ -47,9 +48,11 @@ export function ReadingModeClient() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
     const loadBooks = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/files`, {
+        const response = await authedFetch(`${API_BASE_URL}/files`, {
           cache: "no-store",
         });
 
@@ -75,7 +78,7 @@ export function ReadingModeClient() {
     };
 
     void loadBooks();
-  }, []);
+  }, [authedFetch, isLoaded, isSignedIn]);
 
   const handleUpload = async (event: UploadSuccessEvent) => {
     const uploadedFile = event.successEntries[0];
@@ -99,7 +102,7 @@ export function ReadingModeClient() {
 
     try {
       const thumbnailUrl = await renderPdfThumbnail(uploadedFile.cdnUrl);
-      const response = await fetch(`${API_BASE_URL}/files`, {
+      const response = await authedFetch(`${API_BASE_URL}/files`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -140,7 +143,7 @@ export function ReadingModeClient() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/files/${book.id}`, {
+      const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -179,7 +182,7 @@ export function ReadingModeClient() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/files/${book.id}`, {
+      const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
         method: "DELETE",
       });
 
@@ -246,7 +249,10 @@ export function ReadingModeClient() {
                 <BackIcon />
                 <span>Volver</span>
               </Link>
-              <ThemeToggle />
+              <div className="flex items-center gap-3">
+                <ThemeToggle />
+                <UserButton />
+              </div>
             </div>
 
             <header className="grid gap-8 border-b border-slate-200/80 pb-10 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -310,6 +316,13 @@ export function ReadingModeClient() {
                         pubkey={process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY!}
                         sourceList="local, gdrive, dropbox"
                         classNameUploader="uc-light reading-mode-uploader"
+                        // Reading mode only supports PDF. Without this,
+                        // Uploadcare's default `imgOnly`-style validator
+                        // rejects PDFs with "Uploading of these file types
+                        // is not allowed."
+                        imgOnly={false}
+                        accept="application/pdf,.pdf"
+                        multiple={false}
                         onCommonUploadStart={() => {
                           setIsUploading(true);
                           setErrorMessage(null);
@@ -321,14 +334,13 @@ export function ReadingModeClient() {
                   </div>
                 </div>
                 {isUploading ? (
-                  <div
-                    className="mt-3 flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400"
+                  <p
+                    className="mt-3 text-sm text-slate-500 dark:text-zinc-400"
                     role="status"
                     aria-live="polite"
                   >
-                    <Spinner />
-                    <span>Guardando libro y generando vista previa…</span>
-                  </div>
+                    Guardando libro y generando vista previa…
+                  </p>
                 ) : null}
               </div>
             </header>

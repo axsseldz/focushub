@@ -1,11 +1,11 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Manrope } from "next/font/google";
 import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 const manrope = Manrope({
@@ -13,41 +13,42 @@ const manrope = Manrope({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const featureCards = [
+const highlights = [
   {
-    title: "Modo Lectura",
+    title: "Lectura inmersiva",
     description:
-      "Modo de lectura diseñado para eliminar distracciones y mejorar la concentración.",
-    note: "Disponible ahora para sesiones de concentración activa.",
+      "Visor de PDF sin distracciones, con seguimiento del tiempo activo y estadísticas reales.",
     icon: <ReadIcon />,
-    status: "Disponible ahora",
-    tone: "available",
+    status: "Disponible",
+    tone: "available" as const,
   },
   {
-    title: "Modo Escritura",
+    title: "Escritura enfocada",
     description:
-      "Entorno de escritura minimalista pensado para mantener claridad mental y continuidad creativa.",
-    note: "Aún no está disponible. Vendrá pronto.",
+      "Un entorno minimalista para escribir con claridad mental y continuidad creativa.",
     icon: <WriteIcon />,
     status: "Próximamente",
-    tone: "soon",
+    tone: "soon" as const,
   },
-] as const;
+];
+
+const benefits = [
+  "Reduce distracciones y silencia el ruido",
+  "Mide tu tiempo real de concentración",
+  "Mantén tu progreso y tu biblioteca privados",
+];
 
 export default function Home() {
   const rootRef = useRef<HTMLDivElement>(null);
-  const heroCopyRef = useRef<HTMLDivElement>(null);
-  const featuresGridRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
+  const benefitsRef = useRef<HTMLUListElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const ambientGlowRef = useRef<HTMLDivElement>(null);
   const orbOneRef = useRef<HTMLDivElement>(null);
   const orbTwoRef = useRef<HTMLDivElement>(null);
-  const orbThreeRef = useRef<HTMLDivElement>(null);
-  const featureRefOne = useRef<HTMLDivElement>(null);
-  const featureRefTwo = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    gsap.registerPlugin(ScrollTrigger);
-
     const ctx = gsap.context(() => {
       if (ambientGlowRef.current) {
         gsap.to(ambientGlowRef.current, {
@@ -61,73 +62,69 @@ export default function Home() {
         });
       }
 
-      [orbOneRef.current, orbTwoRef.current, orbThreeRef.current].forEach(
-        (orb, index) => {
-          if (!orb) {
-            return;
-          }
+      [orbOneRef.current, orbTwoRef.current].forEach((orb, index) => {
+        if (!orb) return;
+        gsap.to(orb, {
+          x: index === 0 ? 18 : -18,
+          y: index === 0 ? 16 : -14,
+          scale: 1.05,
+          duration: 8 + index,
+          repeat: -1,
+          yoyo: true,
+          ease: "sine.inOut",
+        });
+      });
 
-          gsap.to(orb, {
-            x: index === 1 ? -18 : 14,
-            y: index === 2 ? -16 : 18,
-            scale: 1.05,
-            duration: 7 + index,
-            repeat: -1,
-            yoyo: true,
-            ease: "sine.inOut",
-          });
-        },
-      );
-
-      if (heroCopyRef.current) {
+      if (navRef.current) {
         gsap.fromTo(
-          heroCopyRef.current,
-          { autoAlpha: 0, y: 28 },
+          navRef.current,
+          { autoAlpha: 0, y: -10 },
+          { autoAlpha: 1, y: 0, duration: 0.7, ease: "power3.out" },
+        );
+      }
+
+      if (heroRef.current) {
+        const items = heroRef.current.querySelectorAll("[data-hero-item]");
+        gsap.fromTo(
+          items,
+          { autoAlpha: 0, y: 24 },
           {
             autoAlpha: 1,
             y: 0,
-            duration: 1,
+            duration: 0.9,
+            stagger: 0.09,
             ease: "power3.out",
+            delay: 0.05,
           },
         );
       }
 
-      [featureRefOne.current, featureRefTwo.current].forEach((element) => {
-        if (!element) {
-          return;
-        }
-
+      if (cardsRef.current) {
         gsap.fromTo(
-          element,
-          { autoAlpha: 0, y: 32 },
+          cardsRef.current.querySelectorAll("[data-card]"),
+          { autoAlpha: 0, y: 28 },
           {
             autoAlpha: 1,
             y: 0,
-            duration: 1,
+            duration: 0.9,
+            stagger: 0.1,
             ease: "power3.out",
-            scrollTrigger: {
-              trigger: element,
-              start: "top 82%",
-              once: true,
-            },
+            delay: 0.45,
           },
         );
-      });
+      }
 
-      if (featuresGridRef.current) {
+      if (benefitsRef.current) {
         gsap.fromTo(
-          featuresGridRef.current,
-          { autoAlpha: 0, y: 34 },
+          benefitsRef.current.querySelectorAll("li"),
+          { autoAlpha: 0, x: -10 },
           {
             autoAlpha: 1,
-            y: 0,
-            duration: 1,
+            x: 0,
+            duration: 0.7,
+            stagger: 0.08,
             ease: "power3.out",
-            scrollTrigger: {
-              trigger: featuresGridRef.current,
-              start: "top 80%",
-              once: true,
-            },
+            delay: 0.3,
           },
         );
       }
@@ -136,130 +133,172 @@ export default function Home() {
     return () => ctx.revert();
   }, []);
 
-  const setCardState = (card: HTMLDivElement | null, active: boolean) => {
-    if (!card) {
-      return;
-    }
-
-    const iconShell = card.querySelector("[data-icon-shell]");
-
-    gsap.to(card, {
-      y: active ? -8 : 0,
-      borderColor: active ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.18)",
-      boxShadow: active
-        ? "0 30px 70px rgba(15, 23, 42, 0.10)"
-        : "0 18px 45px rgba(15, 23, 42, 0.05)",
-      duration: 0.35,
-      ease: "power2.out",
-    });
-
-    if (iconShell instanceof HTMLElement) {
-      gsap.to(iconShell, {
-        y: active ? -2 : 0,
-        scale: active ? 1.04 : 1,
-        duration: 0.35,
-        ease: "power2.out",
-      });
-    }
-  };
-
   return (
     <main
       id="inicio"
-      className={`${manrope.className} relative overflow-x-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_48%,#f4f7fb_100%)] text-slate-950 dark:[background-image:none] dark:bg-zinc-950 dark:text-zinc-50`}
+      className={`${manrope.className} relative min-h-screen overflow-x-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_48%,#eef3fb_100%)] text-slate-950 dark:[background-image:none] dark:bg-zinc-950 dark:text-zinc-50`}
     >
-      {/* Theme toggle — fixed top-right on every viewport */}
-      <div className="fixed right-4 top-4 z-50">
-        <ThemeToggle />
-      </div>
+      {/* Ambient backdrop */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 overflow-hidden"
       >
         <div
           ref={ambientGlowRef}
-          className="absolute left-1/2 top-24 h-136 w-136 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(191,219,254,0.42),rgba(255,255,255,0)_68%)] blur-3xl"
+          className="absolute left-1/2 top-32 h-150 w-150 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(191,219,254,0.42),rgba(255,255,255,0)_68%)] blur-3xl dark:bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.18),rgba(0,0,0,0)_68%)]"
         />
         <div
           ref={orbOneRef}
-          className="absolute left-[10%] top-28 h-40 w-40 rounded-full bg-[radial-gradient(circle_at_center,rgba(191,219,254,0.42),rgba(255,255,255,0)_68%)] blur-2xl"
+          className="absolute left-[8%] top-44 h-44 w-44 rounded-full bg-[radial-gradient(circle_at_center,rgba(191,219,254,0.44),rgba(255,255,255,0)_70%)] blur-2xl dark:bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.22),rgba(0,0,0,0)_70%)]"
         />
         <div
           ref={orbTwoRef}
-          className="absolute right-[12%] top-88 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(226,232,240,0.34),rgba(255,255,255,0)_74%)] blur-3xl"
-        />
-        <div
-          ref={orbThreeRef}
-          className="absolute bottom-28 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(219,234,254,0.28),rgba(255,255,255,0)_74%)] blur-3xl"
+          className="absolute right-[10%] top-72 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(226,232,240,0.36),rgba(255,255,255,0)_74%)] blur-3xl dark:bg-[radial-gradient(circle,rgba(147,197,253,0.16),rgba(0,0,0,0)_74%)]"
         />
       </div>
 
-      <div
-        ref={rootRef}
-        className="relative"
-      >
-        <section className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-8 sm:px-10 lg:py-10">
-          <div
-            ref={heroCopyRef}
-            className="mx-auto max-w-4xl text-center"
+      <div ref={rootRef} className="relative">
+        {/* Top navigation */}
+        <nav
+          ref={navRef}
+          className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-6 sm:px-10 sm:pt-8"
+        >
+          <Link
+            href="/"
+            className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-lg font-semibold tracking-[-0.04em] text-transparent transition-opacity hover:opacity-85 dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)] sm:text-xl"
           >
-            <h1 className="mt-6 text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-zinc-50 sm:text-6xl lg:text-7xl">
-              Entra en estado de focus.
-            </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600 dark:text-zinc-400 sm:text-xl">
-              <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text font-semibold text-transparent dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)]">
-                FocusHub
-              </span>{" "}
-              reduce distracciones, silencia interrupciones y crea un entorno
-              tranquilo para que avances con claridad en tu trabajo cognitivo.
-            </p>
-            <div className="mt-10 flex justify-center">
+            FocusHub
+          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button
+                  type="button"
+                  className="hidden rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-950 dark:text-zinc-400 dark:hover:text-zinc-100 sm:inline-flex"
+                >
+                  Iniciar sesión
+                </button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
+                >
+                  Crear cuenta
+                </button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
+                className="inline-flex items-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
               >
-                Probar FocusHub
+                Ir al panel
               </Link>
-            </div>
-            <p className="mt-4 text-sm text-slate-500 dark:text-zinc-500">
-              Lectura inmersiva disponible. Escritura próximamente.
-              Notificaciones en pausa.
+              <UserButton />
+            </Show>
+          </div>
+        </nav>
+
+        {/* Hero */}
+        <section className="mx-auto max-w-6xl px-6 pb-16 pt-16 sm:px-10 sm:pt-20 lg:pt-24">
+          <div ref={heroRef} className="mx-auto max-w-3xl text-center">
+            <span
+              data-hero-item
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3.5 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-600 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Concentración profunda
+            </span>
+            <h1
+              data-hero-item
+              className="mt-6 text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-zinc-50 sm:text-6xl lg:text-7xl"
+            >
+              Entra en estado de{" "}
+              <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)]">
+                focus
+              </span>
+              .
+            </h1>
+            <p
+              data-hero-item
+              className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-600 dark:text-zinc-400 sm:text-xl"
+            >
+              FocusHub crea un entorno tranquilo para tu trabajo cognitivo. Lee
+              y, muy pronto, escribe — sin distracciones, con métricas reales y
+              tu propio espacio privado.
             </p>
+
+            <div
+              data-hero-item
+              className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
+            >
+              <Show when="signed-out">
+                <SignUpButton mode="modal">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-[1px] hover:bg-slate-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
+                  >
+                    Empezar gratis
+                    <ArrowIcon />
+                  </button>
+                </SignUpButton>
+                <SignInButton mode="modal">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/80 px-7 py-3 text-sm font-semibold text-slate-700 backdrop-blur transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  >
+                    Ya tengo cuenta
+                  </button>
+                </SignInButton>
+              </Show>
+              <Show when="signed-in">
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-[1px] hover:bg-slate-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
+                >
+                  Entrar al panel
+                  <ArrowIcon />
+                </Link>
+              </Show>
+            </div>
+
+            <ul
+              ref={benefitsRef}
+              data-hero-item
+              className="mx-auto mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-slate-500 dark:text-zinc-500"
+            >
+              {benefits.map((benefit) => (
+                <li key={benefit} className="flex items-center gap-2">
+                  <CheckIcon />
+                  <span>{benefit}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
+          {/* Highlight cards */}
           <div
-            className="mt-10 grid gap-8 lg:mt-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start"
+            ref={cardsRef}
+            className="mx-auto mt-20 grid max-w-4xl gap-5 sm:grid-cols-2"
           >
-            <div
-              ref={featuresGridRef}
-              className="grid gap-5 lg:col-span-2 lg:grid-cols-2"
-            >
-              {featureCards.map((feature, index) => (
-                <FeatureCard
-                  key={feature.title}
-                  refProp={index === 0 ? featureRefOne : featureRefTwo}
-                  icon={feature.icon}
-                  description={feature.description}
-                  note={feature.note}
-                  onMouseEnter={() =>
-                    setCardState(
-                      index === 0 ? featureRefOne.current : featureRefTwo.current,
-                      true,
-                    )
-                  }
-                  onMouseLeave={() =>
-                    setCardState(
-                      index === 0 ? featureRefOne.current : featureRefTwo.current,
-                      false,
-                    )
-                  }
-                  status={feature.status}
-                  title={feature.title}
-                  tone={feature.tone}
-                />
-              ))}
-            </div>
+            {highlights.map((feature) => (
+              <FeatureCard
+                key={feature.title}
+                icon={feature.icon}
+                description={feature.description}
+                status={feature.status}
+                title={feature.title}
+                tone={feature.tone}
+              />
+            ))}
           </div>
+
+          <p className="mx-auto mt-12 max-w-xl text-center text-xs text-slate-400 dark:text-zinc-600">
+            Crea tu cuenta para guardar tu biblioteca, tu progreso y tus rachas
+            de lectura de forma privada.
+          </p>
         </section>
       </div>
     </main>
@@ -269,10 +308,6 @@ export default function Home() {
 type FeatureCardProps = {
   description: string;
   icon: ReactNode;
-  note: string;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-  refProp: RefObject<HTMLDivElement | null>;
   status: string;
   title: string;
   tone: "available" | "soon";
@@ -281,10 +316,6 @@ type FeatureCardProps = {
 function FeatureCard({
   description,
   icon,
-  note,
-  onMouseEnter,
-  onMouseLeave,
-  refProp,
   status,
   title,
   tone,
@@ -296,43 +327,32 @@ function FeatureCard({
 
   return (
     <article
-      ref={refProp}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      className="rounded-[1.8rem] border border-slate-200/70 bg-white/78 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900"
+      data-card
+      className="group rounded-[1.6rem] border border-slate-200/70 bg-white/78 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_28px_60px_rgba(15,23,42,0.1)] dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
     >
       <div className="flex items-start justify-between gap-4">
-        <div
-          data-icon-shell
-          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-zinc-700 dark:bg-zinc-800 dark:[background-image:none] dark:text-zinc-200"
-        >
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-transform duration-300 group-hover:scale-105 dark:border-zinc-700 dark:bg-zinc-800 dark:[background-image:none] dark:text-zinc-200">
           {icon}
         </div>
         <span
-          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${statusClasses}`}
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusClasses}`}
         >
           {status}
         </span>
       </div>
-      <h3 className="mt-6 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-zinc-50">
+      <h3 className="mt-5 text-xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-zinc-50">
         {title}
       </h3>
-      <p className="mt-3 max-w-lg text-base leading-7 text-slate-600 dark:text-zinc-400">
+      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-zinc-400">
         {description}
       </p>
-      <p className="mt-4 text-sm font-medium text-slate-500 dark:text-zinc-500">{note}</p>
     </article>
   );
 }
 
 function ReadIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-6 w-6"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
       <path
         d="M4.75 6.75A2.75 2.75 0 0 1 7.5 4h10.25a1.5 1.5 0 0 1 1.5 1.5v12.75H8.25A3.25 3.25 0 0 0 5 21.5V7.5"
         stroke="currentColor"
@@ -352,12 +372,7 @@ function ReadIcon() {
 
 function WriteIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-6 w-6"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
       <path
         d="M4.75 18.25V19.5h1.25L17.4 8.1l-2.5-2.5L4.75 15.75v2.5Z"
         stroke="currentColor"
@@ -371,6 +386,39 @@ function WriteIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M5 12h14M13 6l6 6-6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4 text-emerald-500"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="m5 12.5 4 4 10-10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
       />
     </svg>
   );

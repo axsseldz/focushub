@@ -3,8 +3,10 @@
 import { Manrope } from "next/font/google";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { UserButton, useAuth } from "@clerk/nextjs";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { StatsHero } from "@/components/analytics/StatsHero";
 import { DailyGoalCard } from "@/components/analytics/DailyGoalCard";
 import { StreakCard } from "@/components/analytics/StreakCard";
@@ -29,16 +31,22 @@ const manrope = Manrope({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-
 export function AnalyticsView() {
+  const authedFetch = useAuthedFetch();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const [sessions, setSessions] = useState<ReadingSessionDTO[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [goals, setGoals] = useState<Goals>(() => readGoals());
+  const [goals, setGoals] = useState<Goals>(() => readGoals(userId));
+
+  // Re-hydrate goals once the user ID is known (initial mount happens
+  // before Clerk hydrates on first paint).
+  useEffect(() => {
+    if (isLoaded && userId) setGoals(readGoals(userId));
+  }, [isLoaded, userId]);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -47,9 +55,10 @@ export function AnalyticsView() {
         const since = new Date();
         since.setDate(since.getDate() - 400);
         const params = new URLSearchParams({ since: since.toISOString() });
-        const response = await fetch(`${API_BASE_URL}/sessions?${params}`, {
-          cache: "no-store",
-        });
+        const response = await authedFetch(
+          `${API_BASE_URL}/sessions?${params}`,
+          { cache: "no-store" },
+        );
         if (!response.ok) throw new Error("No se pudo cargar la analítica.");
         const data = (await response.json()) as ReadingSessionDTO[];
         if (!cancelled) setSessions(data);
@@ -67,11 +76,11 @@ export function AnalyticsView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authedFetch, isLoaded, isSignedIn]);
 
   const updateGoals = (next: Goals) => {
     setGoals(next);
-    writeGoals(next);
+    writeGoals(next, userId);
   };
 
   // ---------------------------------------------------------------------
@@ -129,8 +138,9 @@ export function AnalyticsView() {
                   Métricas reales basadas en tiempo de lectura activa, no en tiempo en pantalla.
                 </p>
               </div>
-              <div className="mt-1 shrink-0">
+              <div className="mt-1 flex shrink-0 items-center gap-3">
                 <ThemeToggle />
+                <UserButton />
               </div>
             </div>
           </header>

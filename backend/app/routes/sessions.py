@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import require_user_id
 from app.database import get_db
 from app.models import ReadingSession
 from app.schemas import ReadingSessionCreate, ReadingSessionResponse
@@ -20,8 +21,9 @@ def list_sessions(
         "window to e.g. the last 365 days.",
     ),
     db: Session = Depends(get_db),
+    user_id: str = Depends(require_user_id),
 ) -> list[ReadingSession]:
-    statement = select(ReadingSession)
+    statement = select(ReadingSession).where(ReadingSession.user_id == user_id)
     if since is not None:
         statement = statement.where(ReadingSession.ended_at >= since)
     statement = statement.order_by(
@@ -39,8 +41,10 @@ def list_sessions(
 def create_session(
     payload: ReadingSessionCreate,
     db: Session = Depends(get_db),
+    user_id: str = Depends(require_user_id),
 ) -> ReadingSession:
     session = ReadingSession(
+        user_id=user_id,
         book_id=payload.book_id,
         started_at=payload.started_at,
         ended_at=payload.ended_at,

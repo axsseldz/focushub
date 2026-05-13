@@ -175,10 +175,17 @@ export const DEFAULT_GOALS: Goals = {
   weeklyDays: 5,
 };
 
-export function readGoals(): Goals {
+function goalsKey(userId: string | null | undefined): string {
+  // Namespace the storage key per user so two accounts on the same browser
+  // don't share goals. The legacy key (no user) is left untouched so users
+  // upgrading from the pre-auth build retain their last preferences.
+  return userId ? `${STORAGE_KEY_GOALS}:${userId}` : STORAGE_KEY_GOALS;
+}
+
+export function readGoals(userId?: string | null): Goals {
   if (typeof window === "undefined") return DEFAULT_GOALS;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY_GOALS);
+    const raw = window.localStorage.getItem(goalsKey(userId));
     if (!raw) return DEFAULT_GOALS;
     const parsed = JSON.parse(raw) as Partial<Goals>;
     return {
@@ -200,10 +207,10 @@ export function readGoals(): Goals {
   }
 }
 
-export function writeGoals(goals: Goals): void {
+export function writeGoals(goals: Goals, userId?: string | null): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(goals));
+    window.localStorage.setItem(goalsKey(userId), JSON.stringify(goals));
   } catch {
     // ignore quota
   }

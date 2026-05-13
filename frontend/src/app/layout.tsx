@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
+import { esES } from "@clerk/localizations";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
 import { FocusModeProvider } from "@/lib/focus-mode";
 
 export const metadata: Metadata = {
   title: "FocusHub",
-  description: "Landing page de FocusHub enfocada en concentración profunda.",
+  description: "Entra en estado de focus. Lectura y escritura sin distracciones.",
 };
 
 // Runs before React hydrates so the `dark` class is already on <html>.
@@ -27,9 +29,21 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-white dark:bg-zinc-950">
-        <ThemeProvider>
-          <FocusModeProvider>{children}</FocusModeProvider>
-        </ThemeProvider>
+        <ClerkProvider
+          localization={esES}
+          afterSignOutUrl="/"
+          appearance={{
+            variables: {
+              colorPrimary: "#0f172a",
+              borderRadius: "0.85rem",
+              fontFamily: "var(--font-sans, system-ui)",
+            },
+          }}
+        >
+          <ThemeProvider>
+            <FocusModeProvider>{children}</FocusModeProvider>
+          </ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

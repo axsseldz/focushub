@@ -10,6 +10,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/localizations": "^4.6.2",
+    "@clerk/nextjs": "^7.3.3",
     "@mediapipe/tasks-vision": "^0.10.34",
     "@uploadcare/react-uploader": "^1.13.0",
     "framer-motion": "^12.38.0",

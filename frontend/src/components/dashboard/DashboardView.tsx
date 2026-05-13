@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Manrope } from "next/font/google";
 import { gsap } from "gsap";
+import { UserButton, useUser } from "@clerk/nextjs";
 import {
   ActivityCard,
   ReadingIcon,
@@ -17,6 +18,9 @@ const manrope = Manrope({
 });
 
 export function DashboardView() {
+  const { user } = useUser();
+  const greetingName =
+    user?.firstName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
   const rootRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -150,17 +154,20 @@ export function DashboardView() {
                 ref={headerRef}
                 className="border-b border-slate-200/80 px-6 py-7 dark:border-zinc-800 sm:px-8 sm:py-8"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div>
                     <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-slate-950 dark:text-zinc-50 sm:text-4xl">
-                      Panel de focus
+                      {greetingName
+                        ? `Hola, ${greetingName}`
+                        : "Panel de focus"}
                     </h1>
                     <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 dark:text-zinc-400 sm:text-lg">
                       Selecciona una actividad para entrar en estado de focus.
                     </p>
                   </div>
-                  <div className="mt-1 shrink-0">
+                  <div className="mt-1 flex shrink-0 items-center gap-3">
                     <ThemeToggle />
+                    <UserButton />
                   </div>
                 </div>
               </header>
