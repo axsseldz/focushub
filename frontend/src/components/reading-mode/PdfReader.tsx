@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Book } from "@/types/book";
 import { FocusMode } from "@/components/reading-mode/FocusMode";
@@ -32,6 +32,25 @@ function readSavedPage(bookId: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+/**
+ * Discrete zoom stops. Discrete (vs. continuous) keeps the percentages
+ * readable and gives the user predictable jumps. 1 = "fit to viewport".
+ */
+const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
+const DEFAULT_ZOOM = 1;
+
+function nextZoomUp(current: number): number {
+  return ZOOM_LEVELS.find((l) => l > current + 0.0001) ?? current;
+}
+
+function nextZoomDown(current: number): number {
+  let best = current;
+  for (const l of ZOOM_LEVELS) {
+    if (l < current - 0.0001) best = l;
+  }
+  return best;
+}
+
 export function PdfReader({ book, onBack }: PdfReaderProps) {
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
@@ -41,7 +60,27 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
   // reader resumes exactly where the user left off. Clamped to numPages
   // once the PDF reports its total length (see onLoadSuccess below).
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
+  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [gestureEnabled, setGestureEnabled] = useState(false);
+
+  const zoomIn = useCallback(
+    () => setZoom((z) => nextZoomUp(z)),
+    [],
+  );
+  const zoomOut = useCallback(
+    () => setZoom((z) => nextZoomDown(z)),
+    [],
+  );
+  const resetZoom = useCallback(() => setZoom(DEFAULT_ZOOM), []);
+  const canZoomIn = zoom < ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+  const canZoomOut = zoom > ZOOM_LEVELS[0];
+
+  // Reset zoom whenever the user opens a different book — a comfortable
+  // zoom for one PDF is rarely the right one for another (font sizes,
+  // page geometry).
+  useEffect(() => {
+    setZoom(DEFAULT_ZOOM);
+  }, [book.id]);
   const {
     enabled: focusEnabled,
     enable: enableFocus,
@@ -97,6 +136,26 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
       if (isEditable) return;
 
+      // Zoom keys — accept both bare keys and Cmd/Ctrl combos so the
+      // shortcut feels native to muscle memory. We only intercept when
+      // a modifier is held (otherwise we'd block users from typing "+"
+      // into any future text field that might appear).
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        zoomIn();
+        return;
+      }
+      if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+        return;
+      }
+      if (e.key === "0") {
+        e.preventDefault();
+        resetZoom();
+        return;
+      }
+
       if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
         e.preventDefault();
         setCurrentPage((p) => Math.min(p + 1, numPages));
@@ -107,7 +166,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onBack, focusEnabled, numPages, disableFocus, enableFocus]);
+  }, [onBack, focusEnabled, numPages, disableFocus, enableFocus, zoomIn, zoomOut, resetZoom]);
 
   // Persist the current page per book so the next open resumes here.
   // Only write once numPages is known so we never store 0 or a clamp-
@@ -191,11 +250,14 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
   // Available space subtracts padding from each axis, then clamps to reasonable bounds.
   const availW = Math.min(Math.max(containerDims.width - 48, 280), 820);
   const availH = Math.max(containerDims.height - 32, 200); // 16px top + bottom padding
-  // If the page ratio is known, pick the binding constraint; otherwise fall back to width.
-  const pageProp: { width: number; height?: number } =
+  // Width that exactly fits the container at zoom = 1. We always express
+  // the page in terms of width (react-pdf derives height from the page
+  // ratio) so zooming is a single multiplication.
+  const fitWidth =
     pageRatio !== null && availH * pageRatio <= availW
-      ? { width: availH * pageRatio, height: availH } // height-bound
-      : { width: availW };                             // width-bound
+      ? availH * pageRatio
+      : availW;
+  const pageProp: { width: number } = { width: fitWidth * zoom };
 
   const Document = pdfComponents?.Document;
   const Page = pdfComponents?.Page;
@@ -280,6 +342,44 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
 
+            {/* Zoom cluster — symmetric −/% / + pill. The middle button
+                shows the current zoom and resets to 100% on click. */}
+            {isLoaded && (
+              <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  disabled={!canZoomOut}
+                  aria-label="Reducir zoom"
+                  title="Reducir zoom (−)"
+                  className="inline-flex h-8 w-8 items-center justify-center transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-zinc-700"
+                >
+                  <MinusIcon />
+                </button>
+                <button
+                  type="button"
+                  onClick={resetZoom}
+                  aria-label="Restablecer zoom"
+                  title="Restablecer zoom (0)"
+                  className="inline-flex h-8 min-w-[3.25rem] items-center justify-center border-x border-slate-200 tabular-nums transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-700"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  disabled={!canZoomIn}
+                  aria-label="Aumentar zoom"
+                  title="Aumentar zoom (+)"
+                  className="inline-flex h-8 w-8 items-center justify-center transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-zinc-700"
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            )}
+
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
+
             {/* Gesture toggle */}
             <button
               type="button"
@@ -315,15 +415,28 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
 
         {/* ----------------------------------------------------------------
           Page canvas
+
+          Two-layer container so zoom works cleanly:
+
+          1. Outer (`pagesContainerRef`) — scrollable, max-width responsive,
+             measured by the ResizeObserver to drive `fitWidth`.
+          2. Inner — `min-h-full min-w-full` flex centerer. When the page
+             fits, this layer is exactly the size of the viewport and
+             centers the page. When the page exceeds the viewport (zoom
+             > 1) the flex container grows to the page's intrinsic size,
+             which makes the outer scrollable area scroll naturally
+             without the well-known "centered content gets clipped"
+             flexbox quirk.
         ---------------------------------------------------------------- */}
         <div
           ref={pagesContainerRef}
-          className={`mx-auto flex w-full flex-1 items-center justify-center overflow-hidden transition-[padding,max-width] duration-500 ease-out ${
+          className={`mx-auto w-full flex-1 overflow-auto transition-[padding,max-width] duration-500 ease-out ${
             focusEnabled
               ? "max-w-3xl px-6 py-10 sm:px-12 lg:px-16"
               : "max-w-6xl px-4 py-4 sm:px-6 lg:px-8"
           }`}
         >
+          <div className="flex min-h-full min-w-full items-center justify-center">
           {Document && Page ? (
             <Document
               file={book.fileUrl}
@@ -380,6 +493,7 @@ export function PdfReader({ book, onBack }: PdfReaderProps) {
           ) : (
             <PageSkeleton />
           )}
+          </div>
         </div>
 
         {/* ----------------------------------------------------------------
@@ -486,6 +600,42 @@ function PageSkeleton() {
 // ---------------------------------------------------------------------------
 // Icons
 // ---------------------------------------------------------------------------
+
+function PlusIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M12 5.5v13M5.5 12h13"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M5.5 12h13"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
 
 function HandIcon({ active }: { active: boolean }) {
   return (
