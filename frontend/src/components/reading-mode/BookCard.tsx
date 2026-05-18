@@ -18,7 +18,6 @@ function formatPacificDate(dateValue: string) {
   const normalizedDate = /(?:Z|[+-]\d{2}:\d{2})$/.test(dateValue)
     ? dateValue
     : `${dateValue}Z`;
-
   return new Intl.DateTimeFormat("es-MX", {
     timeZone: "America/Los_Angeles",
     day: "numeric",
@@ -56,10 +55,6 @@ export function BookCard({
   const [draftTitle, setDraftTitle] = useState(displayTitle);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // SSR-safe subscription to localStorage. Returns null on the server
-  // (no progress bar rendered during SSR), then resolves to the saved
-  // page on client. Cross-tab `storage` events keep the bar in sync if
-  // the same book is opened in another tab.
   const getSnapshot = useCallback(() => readSavedPage(book.id), [book.id]);
   const currentPage = useSyncExternalStore(
     subscribeToStorage,
@@ -73,13 +68,8 @@ export function BookCard({
     ? Math.min(1, Math.max(0, currentPage / total))
     : 0;
   const progressPercent = Math.round(progressRatio * 100);
+  const isStarted = hasProgress && currentPage > 1;
 
-  const startEditing = () => {
-    setDraftTitle(displayTitle);
-    setIsEditing(true);
-  };
-
-  // Auto-focus + select when entering edit mode.
   useEffect(() => {
     if (!isEditing) return;
     const input = inputRef.current;
@@ -87,6 +77,11 @@ export function BookCard({
     input.focus();
     input.select();
   }, [isEditing]);
+
+  const startEditing = () => {
+    setDraftTitle(displayTitle);
+    setIsEditing(true);
+  };
 
   const commitRename = async () => {
     const next = draftTitle.trim();
@@ -106,12 +101,62 @@ export function BookCard({
 
   return (
     <motion.article
-      whileHover={{ scale: 1.012, y: -4 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
-      className="group flex w-full flex-col gap-4 rounded-[1.75rem] border border-slate-200/80 bg-white p-4 text-left shadow-[0_14px_34px_rgba(15,23,42,0.045)] dark:border-zinc-800 dark:bg-zinc-900"
+      initial={false}
+      whileHover={{ y: -4 }}
+      transition={{ type: "spring", stiffness: 320, damping: 24 }}
+      className="group relative flex w-full flex-col text-left"
     >
-      <div className="flex items-start justify-end gap-2">
-        {!isEditing && (
+      {/* -----------------------------------------------------------------
+          Thumbnail — la única zona "loud" del card. Click abre el
+          BookOpenDialog (gestionado por el padre). Hover revela el
+          cluster de acciones flotando en la esquina superior derecha.
+      ----------------------------------------------------------------- */}
+      <motion.button
+        type="button"
+        onClick={() => !isEditing && onOpen(book)}
+        disabled={isEditing}
+        aria-label={`Abrir ${displayTitle}`}
+        whileTap={isEditing ? undefined : { scale: 0.98 }}
+        transition={{ duration: 0.12, ease: "easeOut" }}
+        className="relative block overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-[box-shadow,border-color] duration-200 group-hover:border-slate-300 group-hover:shadow-[0_18px_38px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:group-hover:border-zinc-700 dark:group-hover:shadow-[0_18px_38px_rgba(0,0,0,0.5)]"
+      >
+        <PdfThumbnail
+          fileUrl={book.fileUrl}
+          filename={displayTitle}
+          thumbnailUrl={book.thumbnailUrl}
+        />
+        {/* Wash sutil al hacer hover — añade profundidad sin saturar */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/0 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-hover:from-slate-950/8"
+        />
+        {/* Indicador de progreso integrado al thumb — reemplaza la
+            pill ruidosa anterior. La presencia misma de la barra
+            comunica "en curso"; la extensión muestra cuánto se ha
+            leído. Neutral, sin chillar. */}
+        {hasProgress && isStarted && (
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+            aria-label={`Progreso de lectura: ${progressPercent}%`}
+            className="absolute inset-x-0 bottom-0 h-[3px] bg-slate-900/12 dark:bg-zinc-100/15"
+          >
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercent}%` }}
+              transition={{ duration: 0.7, ease: [0.22, 0.61, 0.36, 1], delay: 0.05 }}
+              className="h-full bg-slate-900/85 dark:bg-zinc-100/90"
+            />
+          </div>
+        )}
+      </motion.button>
+
+      {/* Acciones — solo aparecen en hover (o focus dentro del card) y
+          se rinden sobre el thumb para no agregar chrome permanente */}
+      {!isEditing && (
+        <div className="pointer-events-none absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
           <button
             type="button"
             onClick={(event) => {
@@ -119,39 +164,32 @@ export function BookCard({
               startEditing();
             }}
             disabled={isRenaming || isDeleting}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-wait disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            aria-label="Editar título"
+            title="Editar título"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white/95 text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.08)] backdrop-blur transition-colors hover:text-slate-900 disabled:cursor-wait disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             <PencilIcon />
-            <span>{isRenaming ? "Guardando..." : "Editar título"}</span>
           </button>
-        )}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(book);
-          }}
-          disabled={isDeleting}
-          className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-wait disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-red-800 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-        >
-          {isDeleting ? "Eliminando..." : "Eliminar"}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(book);
+            }}
+            disabled={isDeleting}
+            aria-label="Eliminar libro"
+            title="Eliminar"
+            className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white/95 text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.08)] backdrop-blur transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-wait disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:border-red-900/40 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      )}
 
-      <button
-        type="button"
-        onClick={() => !isEditing && onOpen(book)}
-        disabled={isEditing}
-        className="flex flex-col gap-4 text-left"
-      >
-        <PdfThumbnail
-          fileUrl={book.fileUrl}
-          filename={displayTitle}
-          thumbnailUrl={book.thumbnailUrl}
-        />
-      </button>
-
-      <div className="space-y-1.5">
+      {/* -----------------------------------------------------------------
+          Meta — título + subtítulo + barra de progreso fina.
+      ----------------------------------------------------------------- */}
+      <div className="mt-3.5 space-y-1.5">
         {isEditing ? (
           <form
             onSubmit={(event) => {
@@ -172,15 +210,15 @@ export function BookCard({
                 }
               }}
               maxLength={255}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:border-zinc-300 dark:focus:ring-zinc-700"
+              className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[13.5px] font-medium text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:border-zinc-300 dark:focus:ring-zinc-700"
               aria-label="Título del libro"
               disabled={isRenaming}
             />
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <button
                 type="submit"
                 disabled={isRenaming}
-                className="flex-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-50"
+                className="flex-1 rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-50"
               >
                 {isRenaming ? "Guardando..." : "Guardar"}
               </button>
@@ -188,54 +226,39 @@ export function BookCard({
                 type="button"
                 onClick={cancelRename}
                 disabled={isRenaming}
-                className="flex-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 Cancelar
               </button>
             </div>
           </form>
         ) : (
-          <button
-            type="button"
-            onClick={() => onOpen(book)}
-            className="w-full text-left"
-          >
-            <h3 className="line-clamp-2 text-[15px] font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-base">
-              {displayTitle}
-            </h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-500">
-              {formatPacificDate(book.uploadedAt)}
+          <>
+            <button
+              type="button"
+              onClick={() => onOpen(book)}
+              className="block w-full text-left"
+            >
+              <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug tracking-[-0.025em] text-slate-950 dark:text-zinc-50">
+                {displayTitle}
+              </h3>
+            </button>
+            <p className="text-[12px] font-medium tabular-nums text-slate-500 dark:text-zinc-500">
+              {isStarted ? (
+                <>
+                  <span className="text-slate-900 dark:text-zinc-200">
+                    {progressPercent}%
+                  </span>
+                  <span className="mx-1.5 text-slate-300 dark:text-zinc-700">·</span>
+                  {currentPage} / {total}
+                </>
+              ) : (
+                formatPacificDate(book.uploadedAt)
+              )}
             </p>
-          </button>
+          </>
         )}
       </div>
-
-      {hasProgress && !isEditing ? (
-        <div
-          className="mt-1 space-y-1.5"
-          aria-label={`Progreso de lectura: ${progressPercent}%`}
-          title={`Página ${currentPage} de ${total} · ${progressPercent}%`}
-        >
-          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-zinc-400">
-            <span className="tabular-nums">
-              Página {currentPage} de {total}
-            </span>
-            <span className="tabular-nums">{progressPercent}%</span>
-          </div>
-          <div
-            className="h-1 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progressPercent}
-          >
-            <div
-              className="h-full rounded-full bg-slate-900 transition-[width] duration-500 ease-out dark:bg-zinc-200"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        </div>
-      ) : null}
     </motion.article>
   );
 }
@@ -245,6 +268,20 @@ function PencilIcon() {
     <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
       <path
         d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3ZM14 6l4 4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M5 7h14M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7v11.5a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V7M10 11v6M14 11v6"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"

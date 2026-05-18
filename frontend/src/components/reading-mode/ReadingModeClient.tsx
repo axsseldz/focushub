@@ -1,20 +1,33 @@
 "use client";
 
-import Link from "next/link";
-import { FileUploaderRegular } from "@uploadcare/react-uploader/next";
 import "@uploadcare/react-uploader/core.css";
-import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { animate, motion, useMotionValue, useTransform } from "framer-motion";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { Manrope } from "next/font/google";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { BooksLibrary } from "@/components/reading-mode/BooksLibrary";
+import { BookOpenDialog } from "@/components/reading-mode/BookOpenDialog";
 import { PdfReader } from "@/components/reading-mode/PdfReader";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 import { renderPdfThumbnail } from "@/lib/pdf";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { markBookOpened, sortBooksByLastOpened } from "@/lib/last-opened";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { Book, StoredFile } from "@/types/book";
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 type UploadedEntry = {
   cdnUrl: string;
@@ -38,6 +51,30 @@ function mapStoredFileToBook(file: StoredFile): Book {
   };
 }
 
+function readLastPage(bookId: string): number {
+  if (typeof window === "undefined") return 1;
+  const raw = window.localStorage.getItem(`focushub:lastPage:${bookId}`);
+  const parsed = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+type LibraryStats = {
+  total: number;
+  inProgress: number;
+};
+
+function computeStats(books: Book[]): LibraryStats {
+  let inProgress = 0;
+  for (const book of books) {
+    const total = book.pageCount ?? 0;
+    if (total <= 0) continue;
+    const last = readLastPage(book.id);
+    if (last <= 1) continue;
+    if (last < total) inProgress += 1;
+  }
+  return { total: books.length, inProgress };
+}
+
 export function ReadingModeClient() {
   const authedFetch = useAuthedFetch();
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -46,8 +83,12 @@ export function ReadingModeClient() {
   const [renamingBookId, setRenamingBookId] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  // Libro que el usuario clickeó pero aún no decidió en qué modo
+  // abrirlo. Mientras este valor exista, se muestra el BookOpenDialog.
+  const [pendingBook, setPendingBook] = useState<Book | null>(null);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -57,22 +98,15 @@ export function ReadingModeClient() {
         const response = await authedFetch(`${API_BASE_URL}/files`, {
           cache: "no-store",
         });
-
-        if (!response.ok) {
-          throw new Error("No se pudo cargar la biblioteca.");
-        }
-
+        if (!response.ok) throw new Error("No se pudo cargar la biblioteca.");
         const storedFiles: StoredFile[] = await response.json();
         const pdfBooks = storedFiles
           .filter((file) => file.file_name.toLowerCase().endsWith(".pdf"))
           .map(mapStoredFileToBook);
-
         setBooks(sortBooksByLastOpened(pdfBooks, userId));
       } catch (error) {
         toast.error(
-          error instanceof Error
-            ? error.message
-            : "No se pudo cargar la biblioteca.",
+          error instanceof Error ? error.message : "No se pudo cargar la biblioteca.",
         );
       } finally {
         setIsLoadingBooks(false);
@@ -84,57 +118,41 @@ export function ReadingModeClient() {
 
   const handleUpload = async (event: UploadSuccessEvent) => {
     const uploadedFile = event.successEntries[0];
-
     if (!uploadedFile) {
       toast.error("No se pudo obtener la información del archivo.");
       return;
     }
-
     const isPdf =
       uploadedFile.mimeType === "application/pdf" ||
       uploadedFile.name.toLowerCase().endsWith(".pdf");
-
     if (!isPdf) {
       toast.error("Solo se permiten archivos PDF en Modo Lectura.");
       return;
     }
 
     setIsUploading(true);
-
     try {
       const thumbnailUrl = await renderPdfThumbnail(uploadedFile.cdnUrl);
       const response = await authedFetch(`${API_BASE_URL}/files`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file_url: uploadedFile.cdnUrl,
           file_name: uploadedFile.name,
           thumbnail_url: thumbnailUrl,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error("No se pudo guardar el libro en el backend.");
-      }
+      if (!response.ok) throw new Error("No se pudo guardar el libro en el backend.");
 
       const savedFile: StoredFile = await response.json();
       const savedBook = mapStoredFileToBook(savedFile);
-
-      // Opening immediately after upload, so stamp it as the most-recent
-      // open. That way returning to the library shows it on top.
       markBookOpened(userId, savedBook.id);
-      setBooks((currentBooks) =>
-        sortBooksByLastOpened([savedBook, ...currentBooks], userId),
-      );
+      setBooks((current) => sortBooksByLastOpened([savedBook, ...current], userId));
       setSelectedBook(savedBook);
       toast.success("Libro agregado a tu biblioteca.");
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Ocurrió un error al subir el libro.",
+        error instanceof Error ? error.message : "Ocurrió un error al subir el libro.",
       );
     } finally {
       setIsUploading(false);
@@ -147,37 +165,23 @@ export function ReadingModeClient() {
     if (!trimmed || trimmed === currentTitle) return;
 
     setRenamingBookId(book.id);
-
     try {
       const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ display_name: trimmed }),
       });
-
-      if (!response.ok) {
-        throw new Error("No se pudo actualizar el título.");
-      }
-
+      if (!response.ok) throw new Error("No se pudo actualizar el título.");
       const updatedFile: StoredFile = await response.json();
       const updatedBook = mapStoredFileToBook(updatedFile);
-
-      setBooks((currentBooks) =>
-        currentBooks.map((currentBook) =>
-          currentBook.id === book.id ? updatedBook : currentBook,
-        ),
+      setBooks((current) =>
+        current.map((b) => (b.id === book.id ? updatedBook : b)),
       );
-      setSelectedBook((current) =>
-        current?.id === book.id ? updatedBook : current,
-      );
+      setSelectedBook((current) => (current?.id === book.id ? updatedBook : current));
       toast.success("Título actualizado.");
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Ocurrió un error al actualizar el título.",
+        error instanceof Error ? error.message : "Ocurrió un error al actualizar el título.",
       );
     } finally {
       setRenamingBookId(null);
@@ -186,37 +190,85 @@ export function ReadingModeClient() {
 
   const handleDeleteBook = async (book: Book) => {
     setDeletingBookId(book.id);
-
     try {
       const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
         method: "DELETE",
       });
-
-      if (!response.ok) {
-        throw new Error("No se pudo eliminar el libro.");
-      }
-
-      setBooks((currentBooks) =>
-        currentBooks.filter((currentBook) => currentBook.id !== book.id),
-      );
-      if (selectedBook?.id === book.id) {
-        setSelectedBook(null);
-      }
+      if (!response.ok) throw new Error("No se pudo eliminar el libro.");
+      setBooks((current) => current.filter((b) => b.id !== book.id));
+      if (selectedBook?.id === book.id) setSelectedBook(null);
       toast.success("Libro eliminado.");
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Ocurrió un error al eliminar el libro.",
+        error instanceof Error ? error.message : "Ocurrió un error al eliminar el libro.",
       );
     } finally {
       setDeletingBookId(null);
     }
   };
 
+  // Stats derivadas — recalcadas en cada render. Cuesta nada (es
+  // un loop por la lista de libros) y se mantiene fresco cuando el
+  // usuario vuelve al lector (selectedBook flip dispara render).
+  const stats = useMemo(
+    () => (selectedBook ? null : computeStats(books)),
+    [books, selectedBook],
+  );
+
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return books;
+    return books.filter((book) =>
+      (book.displayName ?? book.filename).toLowerCase().includes(q),
+    );
+  }, [books, searchQuery]);
+
+  // Reader full-screen.
+  if (selectedBook) {
+    return (
+      <main
+        className={`${manrope.className} min-h-screen bg-white text-slate-950 dark:bg-zinc-950 dark:text-zinc-50`}
+      >
+        <ConfirmDialog
+          open={bookToDelete !== null}
+          title="¿Eliminar este libro?"
+          description="Esta acción no se puede deshacer. El libro será eliminado permanentemente de tu biblioteca."
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          onConfirm={() => {
+            if (bookToDelete) {
+              void handleDeleteBook(bookToDelete);
+              setBookToDelete(null);
+            }
+          }}
+          onCancel={() => setBookToDelete(null)}
+        />
+        <PdfReader
+          key={selectedBook.id}
+          book={selectedBook}
+          onBack={() => setSelectedBook(null)}
+          onPageCountResolved={(pageCount) => {
+            setBooks((current) =>
+              current.map((b) =>
+                b.id === selectedBook.id ? { ...b, pageCount } : b,
+              ),
+            );
+            setSelectedBook((current) =>
+              current && current.id === selectedBook.id
+                ? { ...current, pageCount }
+                : current,
+            );
+          }}
+        />
+      </main>
+    );
+  }
+
+  // Library shell.
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] text-slate-950 dark:[background-image:none] dark:bg-zinc-950 dark:text-zinc-50">
-      {/* Delete confirmation dialog */}
+    <main
+      className={`${manrope.className} min-h-screen bg-white text-slate-950 dark:bg-zinc-950 dark:text-zinc-50`}
+    >
       <ConfirmDialog
         open={bookToDelete !== null}
         title="¿Eliminar este libro?"
@@ -232,208 +284,331 @@ export function ReadingModeClient() {
         onCancel={() => setBookToDelete(null)}
       />
 
-      <AnimatePresence mode="wait">
-        {selectedBook ? (
-          <PdfReader
-            key={selectedBook.id}
-            book={selectedBook}
-            onBack={() => setSelectedBook(null)}
-            onPageCountResolved={(pageCount) => {
-              setBooks((current) =>
-                current.map((b) =>
-                  b.id === selectedBook.id ? { ...b, pageCount } : b,
-                ),
-              );
-              setSelectedBook((current) =>
-                current && current.id === selectedBook.id
-                  ? { ...current, pageCount }
-                  : current,
-              );
-            }}
-          />
-        ) : (
-          <motion.section
-            key="library"
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12 sm:px-8 lg:px-10 dark:text-zinc-50"
-          >
-            <div className="mb-8 flex items-center justify-between">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                <BackIcon />
-                <span>Volver</span>
-              </Link>
-              <div className="flex items-center gap-3">
-                <ThemeToggle />
-                <UserButton />
-              </div>
+      <div className="flex">
+        <Sidebar />
+
+        <motion.section
+          key="library"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+          className="min-w-0 flex-1"
+        >
+          {/* ------------------------------------------------------------
+              Top bar — thin, sticky. Solo tema + usuario. La navegación
+              vive en el sidebar para que la barra superior sea casi aire.
+          ------------------------------------------------------------ */}
+          <div className="sticky top-0 z-10 flex h-14 items-center justify-end gap-2 border-b border-slate-200/70 bg-white/85 px-6 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/85 sm:px-10">
+            <ThemeToggle />
+            <UserButton
+              appearance={{
+                elements: { userButtonAvatarBox: "h-7 w-7" },
+              }}
+            />
+          </div>
+
+          <div className="mx-auto w-full max-w-[1280px] px-6 py-8 sm:px-10 sm:py-10">
+            <LibraryHero
+              stats={stats ?? { total: 0, inProgress: 0 }}
+              isLoading={isLoadingBooks}
+            />
+
+            <div className="mt-7">
+              <LibrarySearch
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+              />
             </div>
 
-            <header className="grid gap-8 border-b border-slate-200/80 pb-10 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-              <div className="max-w-2xl">
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-                  Biblioteca
-                </p>
-                <motion.h1
-                  initial={{ opacity: 0, y: 12, filter: "blur(8px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.55, delay: 0.06, ease: "easeOut" }}
-                  className="mt-3 text-4xl font-semibold tracking-[-0.065em] sm:text-5xl lg:text-[3.6rem]"
-                >
-                  <span className="bg-[linear-gradient(135deg,#020617_0%,#334155_42%,#0f172a_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#bfc0cc_0%,#7d7f94_42%,#a8a9b8_100%)]">
-                    Modo Lectura
-                  </span>
-                </motion.h1>
-              </div>
-
-              <div className="w-full rounded-[1.75rem] border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.045)] dark:border-zinc-800 dark:bg-zinc-900">
-                <p className="text-sm font-medium tracking-[-0.02em] text-slate-700 dark:text-zinc-300">
-                  Subir libro
-                </p>
-                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-zinc-500">
-                  Agrega un libro nuevo a tu biblioteca.
-                </p>
-                <div className="isolate mt-6">
-                  {/* `isolate` + the wrapper's mt-6 keep the button's hover
-                      shadow halo from bleeding up behind the description
-                      text above. The FileUploaderRegular is overlaid invisibly
-                      on top of the visible pill — the pill has
-                      `pointer-events-none` so the wrapper's `group` state
-                      drives the hover/active feedback. Without this the
-                      user sees NO reaction when clicking (observed in
-                      usability testing). */}
-                  <div
-                    className={`group relative isolate inline-flex h-11 w-full max-w-52 overflow-hidden rounded-full ${
-                      isUploading ? "cursor-wait" : "cursor-pointer"
-                    }`}
-                    aria-busy={isUploading}
-                  >
-                    <div
-                      className={`pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full border text-sm font-semibold shadow-[0_6px_14px_rgba(15,23,42,0.05)] transition-all duration-150 ${
-                        isUploading
-                          ? "border-slate-300 bg-slate-100 text-slate-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
-                          : "border-slate-200 bg-white text-slate-900 group-hover:border-slate-300 group-hover:bg-slate-50 group-active:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:group-hover:bg-zinc-700 dark:group-active:bg-zinc-700"
-                      }`}
-                    >
-                      {isUploading ? (
-                        <>
-                          <Spinner />
-                          <span>Cargando…</span>
-                        </>
-                      ) : (
-                        <>
-                          <UploadIcon />
-                          <span>Seleccionar libro</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="absolute inset-0 opacity-0">
-                      <FileUploaderRegular
-                        pubkey={process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY!}
-                        sourceList="local, gdrive, dropbox"
-                        classNameUploader="uc-light reading-mode-uploader"
-                        // Reading mode only supports PDF. Without this,
-                        // Uploadcare's default `imgOnly`-style validator
-                        // rejects PDFs with "Uploading of these file types
-                        // is not allowed."
-                        imgOnly={false}
-                        accept="application/pdf,.pdf"
-                        multiple={false}
-                        onCommonUploadStart={() => setIsUploading(true)}
-                        onCommonUploadFailed={() => setIsUploading(false)}
-                        onCommonUploadSuccess={handleUpload}
-                      />
-                    </div>
-                  </div>
-                </div>
-                {isUploading ? (
-                  <p
-                    className="mt-3 text-sm text-slate-500 dark:text-zinc-400"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Guardando libro y generando vista previa…
-                  </p>
-                ) : null}
-              </div>
-            </header>
-
-            <section className="py-10">
+            <div className="mt-8 border-t border-slate-100 pt-8 dark:border-zinc-800/70">
               <BooksLibrary
-                books={books}
+                books={filteredBooks}
+                totalBookCount={books.length}
+                searchQuery={searchQuery}
                 deletingBookId={deletingBookId}
                 renamingBookId={renamingBookId}
                 isLoading={isLoadingBooks}
                 onDeleteBook={setBookToDelete}
-                onOpenBook={(book) => {
-                  // Stamp + re-sort so the next library visit shows this
-                  // book first. We mutate state before navigating so the
-                  // animated exit (BooksLibrary → PdfReader) doesn't
-                  // visibly shuffle the cards.
+                onOpenBook={(book) => setPendingBook(book)}
+                onRenameBook={handleRenameBook}
+                onClearSearch={() => setSearchQuery("")}
+                uploadcareKey={process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY ?? ""}
+                isUploading={isUploading}
+                onUploadStart={() => setIsUploading(true)}
+                onUploadFailed={() => setIsUploading(false)}
+                onUploadSuccess={handleUpload}
+              />
+
+              <BookOpenDialog
+                book={pendingBook}
+                onClose={() => setPendingBook(null)}
+                onOpenReading={(book) => {
                   markBookOpened(userId, book.id);
-                  setBooks((current) =>
-                    sortBooksByLastOpened(current, userId),
-                  );
+                  setBooks((current) => sortBooksByLastOpened(current, userId));
+                  setPendingBook(null);
                   setSelectedBook(book);
                 }}
-                onRenameBook={handleRenameBook}
               />
-            </section>
-          </motion.section>
-        )}
-      </AnimatePresence>
+            </div>
+          </div>
+        </motion.section>
+      </div>
     </main>
   );
 }
 
-function Spinner() {
+// ---------------------------------------------------------------------------
+// Hero — título + dos métricas con count-up. Sin eyebrow, sin ruido.
+// ---------------------------------------------------------------------------
+
+type LibraryHeroProps = {
+  stats: LibraryStats;
+  isLoading: boolean;
+};
+
+function LibraryHero({ stats, isLoading }: LibraryHeroProps) {
+  return (
+    <motion.header
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 0.61, 0.36, 1] }}
+      className="flex flex-col"
+    >
+      <h1 className="text-[32px] font-semibold leading-[1.1] tracking-[-0.045em] text-slate-950 dark:text-zinc-50 sm:text-[36px]">
+        Biblioteca
+      </h1>
+
+      <HeroStats stats={stats} isLoading={isLoading} />
+    </motion.header>
+  );
+}
+
+function HeroStats({
+  stats,
+  isLoading,
+}: {
+  stats: LibraryStats;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="mt-3 h-[18px] w-56 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
+    );
+  }
+  if (stats.total === 0) {
+    return (
+      <p className="mt-3 text-[14px] text-slate-500 dark:text-zinc-400">
+        Tu primer libro está a un clic de aquí.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 flex items-center gap-2.5 text-[13.5px] text-slate-500 dark:text-zinc-400">
+      <Stat value={stats.total} label={stats.total === 1 ? "libro" : "libros"} />
+      <Dot />
+      <Stat
+        value={stats.inProgress}
+        label="en progreso"
+        dim={stats.inProgress === 0}
+      />
+    </div>
+  );
+}
+
+function Stat({
+  value,
+  label,
+  dim,
+}: {
+  value: number;
+  label: string;
+  dim?: boolean;
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 tabular-nums">
+      <span
+        className={`text-[15px] font-semibold tracking-[-0.015em] ${
+          dim
+            ? "text-slate-400 dark:text-zinc-600"
+            : "text-slate-950 dark:text-zinc-50"
+        }`}
+      >
+        <AnimatedCount value={value} />
+      </span>
+      <span className={dim ? "opacity-70" : ""}>{label}</span>
+    </span>
+  );
+}
+
+function Dot() {
   return (
     <span
       aria-hidden="true"
-      className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700 dark:border-zinc-600 dark:border-t-zinc-200"
+      className="inline-block h-[3px] w-[3px] rounded-full bg-slate-300 dark:bg-zinc-700"
     />
   );
 }
 
-function UploadIcon() {
+/**
+ * Anima un entero de 0 al valor objetivo cuando el componente se
+ * monta o cambia ``value``. Usa motion values directamente para
+ * evitar cascadas de setState en cada frame.
+ */
+function AnimatedCount({ value }: { value: number }) {
+  const mv = useMotionValue(0);
+  const rounded = useTransform(mv, (latest) => Math.round(latest).toString());
+  useEffect(() => {
+    const controls = animate(mv, value, {
+      duration: 0.55,
+      ease: [0.22, 0.61, 0.36, 1],
+    });
+    return () => controls.stop();
+  }, [mv, value]);
+  return <motion.span>{rounded}</motion.span>;
+}
+
+// ---------------------------------------------------------------------------
+// Actions bar — búsqueda + upload primario
+// ---------------------------------------------------------------------------
+
+type LibrarySearchProps = {
+  query: string;
+  onQueryChange: (next: string) => void;
+};
+
+function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  // SSR-safe: arranca como `true` en el server, se corrige en el
+  // cliente sin disparar setState dentro de un effect.
+  const isMac = useSyncExternalStore(
+    () => () => {},
+    () => /Mac|iPhone|iPad/.test(navigator.platform),
+    () => true,
+  );
+
+  // ⌘K / Ctrl+K enfoca el search desde cualquier parte de la library.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editing =
+        tag === "input" || tag === "textarea" || target?.isContentEditable;
+      const cmdOrCtrl = event.metaKey || event.ctrlKey;
+      if (cmdOrCtrl && event.key.toLowerCase() === "k" && !editing) {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      } else if (event.key === "/" && !editing) {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    onQueryChange("");
+    inputRef.current?.focus();
+  }, [onQueryChange]);
+
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <div className="relative max-w-md">
+      {/* Search bar — animated focus state + ⌘K shortcut hint */}
+      <div className="relative">
+        <motion.div
+          animate={{
+            borderColor: isFocused
+              ? "rgb(15, 23, 42)"
+              : query
+                ? "rgb(203, 213, 225)"
+                : "rgb(226, 232, 240)",
+            boxShadow: isFocused
+              ? "0 0 0 4px rgba(15, 23, 42, 0.07)"
+              : "0 0 0 0px rgba(15, 23, 42, 0)",
+          }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="relative flex h-10 items-center overflow-hidden rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          <motion.span
+            aria-hidden="true"
+            animate={{
+              color: isFocused
+                ? "rgb(15, 23, 42)"
+                : "rgb(148, 163, 184)",
+              x: isFocused ? 0 : 0,
+            }}
+            transition={{ duration: 0.18 }}
+            className="flex h-full items-center pl-3 dark:!text-zinc-500"
+          >
+            <SearchIcon />
+          </motion.span>
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Buscar en tu biblioteca…"
+            aria-label="Buscar libros"
+            className="h-full flex-1 bg-transparent px-2.5 text-[13.5px] text-slate-900 placeholder:text-slate-400 outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          />
+          {query ? (
+            <motion.button
+              type="button"
+              onClick={handleClear}
+              aria-label="Limpiar búsqueda"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.12 }}
+              className="mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <CloseIcon />
+            </motion.button>
+          ) : (
+            <kbd className="mr-2.5 hidden items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
+              {isMac ? "⌘" : "Ctrl"}
+              <span className="opacity-60">K</span>
+            </kbd>
+          )}
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+function SearchIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="6.25" stroke="currentColor" strokeWidth="1.7" />
       <path
-        d="M12 16.25V6.75M12 6.75l-3.5 3.5M12 6.75l3.5 3.5M5.75 17.75v.5A1.75 1.75 0 0 0 7.5 20h9a1.75 1.75 0 0 0 1.75-1.75v-.5"
+        d="m20 20-3.5-3.5"
         stroke="currentColor"
         strokeLinecap="round"
-        strokeLinejoin="round"
         strokeWidth="1.7"
       />
     </svg>
   );
 }
 
-function BackIcon() {
+function CloseIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
       <path
-        d="M15.25 5.75 9 12l6.25 6.25M9.5 12h9.75"
+        d="m6 6 12 12M18 6 6 18"
         stroke="currentColor"
         strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
+        strokeWidth="1.8"
       />
     </svg>
   );
 }
+
+

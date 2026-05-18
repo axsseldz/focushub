@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import type { Book } from "@/types/book";
 import { FocusMode } from "@/components/reading-mode/FocusMode";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
@@ -475,15 +474,6 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
                   <BackIcon />
                 </button>
 
-                <Link
-                  href="/dashboard"
-                  aria-label="Ir al dashboard"
-                  title="Dashboard"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
-                >
-                  <DashboardIcon />
-                </Link>
-
                 <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700" />
 
                 <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-lg">
@@ -848,20 +838,6 @@ function BackIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.7"
-      />
-    </svg>
-  );
-}
-
-function DashboardIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <path
-        d="M4.75 6.75a2 2 0 0 1 2-2h10.5a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V6.75ZM9.5 4.75v14.5M4.75 9.5h14.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.6"
       />
     </svg>
   );

@@ -114,31 +114,7 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
-            <Show when="signed-out">
-              <SignInButton mode="modal">
-                <button
-                  type="button"
-                  className="hidden rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-950 dark:text-zinc-400 dark:hover:text-zinc-100 sm:inline-flex"
-                >
-                  Iniciar sesión
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button
-                  type="button"
-                  className="inline-flex items-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
-                >
-                  Crear cuenta
-                </button>
-              </SignUpButton>
-            </Show>
             <Show when="signed-in">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
-              >
-                Ir al panel
-              </Link>
               <UserButton />
             </Show>
           </div>
@@ -164,7 +140,7 @@ export default function Home() {
               className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
             >
               <Show when="signed-out">
-                <SignUpButton mode="modal">
+                <SignUpButton mode="modal" fallbackRedirectUrl="/lectura">
                   <button
                     type="button"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
@@ -173,7 +149,7 @@ export default function Home() {
                     <ArrowIcon />
                   </button>
                 </SignUpButton>
-                <SignInButton mode="modal">
+                <SignInButton mode="modal" fallbackRedirectUrl="/lectura">
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/80 px-7 py-3 text-sm font-semibold text-slate-700 backdrop-blur transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-300 dark:hover:text-zinc-50"
@@ -184,10 +160,10 @@ export default function Home() {
               </Show>
               <Show when="signed-in">
                 <Link
-                  href="/dashboard"
+                  href="/lectura"
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
                 >
-                  Entrar al panel
+                  Entrar a tu biblioteca
                   <ArrowIcon />
                 </Link>
               </Show>
