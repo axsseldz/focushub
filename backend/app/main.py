@@ -2,10 +2,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, engine, ensure_database_schema
+from app.routes.audio import router as audio_router
 from app.routes.files import router as files_router
 from app.routes.sessions import router as sessions_router
+from app.settings import settings
 
 
 @asynccontextmanager
@@ -28,6 +31,16 @@ app.add_middleware(
 )
 app.include_router(files_router)
 app.include_router(sessions_router)
+app.include_router(audio_router)
+
+# Sirve los MP3 cacheados directamente. Permite reproducir audios ya
+# generados sin pasar por el endpoint de streaming (útil para repetir
+# o pre-cargar un párrafo).
+app.mount(
+    "/audio-cache",
+    StaticFiles(directory=settings.audio_cache_dir),
+    name="audio-cache",
+)
 
 
 @app.get("/")

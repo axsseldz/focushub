@@ -1,15 +1,23 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Book } from "@/types/book";
 import { FocusMode } from "@/components/reading-mode/FocusMode";
 import { GestureCamera } from "@/components/reading-mode/GestureCamera";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AudiolibroMenu } from "@/components/reading-mode/AudiolibroMenu";
+import {
+  SettingsMenu,
+  type ReaderTone,
+} from "@/components/reading-mode/SettingsMenu";
+import { ParagraphHighlight } from "@/components/reading-mode/ParagraphHighlight";
 import { useFocusMode } from "@/lib/focus-mode";
 import { useReadingSessionTracker } from "@/lib/reading-tracker";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
+import { extractPageNarration, type PageNarration } from "@/lib/pdf";
+import { useAudioNarrator, type NarratorVoice } from "@/lib/audio-narrator";
+import { useTheme } from "@/lib/theme";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,10 +30,13 @@ type PdfReaderProps = {
 };
 
 // ---------------------------------------------------------------------------
-// Component
+// Persistent reader preferences
 // ---------------------------------------------------------------------------
 
 const PAGE_STORAGE_KEY = (bookId: string) => `focushub:lastPage:${bookId}`;
+const TONE_STORAGE_KEY = "focushub:readerTone";
+const VOICE_STORAGE_KEY = "focushub:narratorVoice";
+const TONE_ORDER: readonly ReaderTone[] = ["light", "sepia", "dark"] as const;
 
 function readSavedPage(bookId: string): number {
   if (typeof window === "undefined") return 1;
@@ -34,18 +45,16 @@ function readSavedPage(bookId: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
-// Reader comfort tone. Applies a CSS filter only to the rendered PDF
-// canvas — the rest of the UI continues to follow the global light/dark
-// theme. Persisted globally per browser, not per book: people tend to
-// pick one comfortable tone and stick with it.
-type ReaderTone = "light" | "sepia" | "dark";
-const TONE_STORAGE_KEY = "focushub:readerTone";
-const TONE_ORDER: readonly ReaderTone[] = ["light", "sepia", "dark"] as const;
-
 function readSavedTone(): ReaderTone {
   if (typeof window === "undefined") return "light";
   const raw = window.localStorage.getItem(TONE_STORAGE_KEY);
   return raw === "sepia" || raw === "dark" ? raw : "light";
+}
+
+function readSavedVoice(): NarratorVoice {
+  if (typeof window === "undefined") return "rous";
+  const raw = window.localStorage.getItem(VOICE_STORAGE_KEY);
+  return raw === "diego" ? "diego" : "rous";
 }
 
 function toneFilter(tone: ReaderTone): string {
@@ -53,36 +62,22 @@ function toneFilter(tone: ReaderTone): string {
     case "sepia":
       return "sepia(0.45) saturate(0.85) brightness(0.98)";
     case "dark":
-      // invert + hue-rotate flips lightness while keeping colour
-      // perception roughly intact — the standard PDF dark-mode recipe.
       return "invert(0.92) hue-rotate(180deg)";
     default:
       return "none";
   }
 }
 
-function toneLabel(tone: ReaderTone): string {
-  switch (tone) {
-    case "sepia":
-      return "Sepia";
-    case "dark":
-      return "Noche";
-    default:
-      return "Día";
-  }
-}
+// ---------------------------------------------------------------------------
+// Zoom
+// ---------------------------------------------------------------------------
 
-/**
- * Discrete zoom stops. Discrete (vs. continuous) keeps the percentages
- * readable and gives the user predictable jumps. 1 = "fit to viewport".
- */
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
 const DEFAULT_ZOOM = 1;
 
 function nextZoomUp(current: number): number {
   return ZOOM_LEVELS.find((l) => l > current + 0.0001) ?? current;
 }
-
 function nextZoomDown(current: number): number {
   let best = current;
   for (const l of ZOOM_LEVELS) {
@@ -91,32 +86,64 @@ function nextZoomDown(current: number): number {
   return best;
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+type PdfDocProxy = { numPages: number; getPage: (n: number) => Promise<unknown> };
+
 export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps) {
   const authedFetch = useAuthedFetch();
   const pagesContainerRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<PdfDocProxy | null>(null);
+
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
-  const [pageRatio, setPageRatio] = useState<number | null>(null); // width / height
+  const [pageRatio, setPageRatio] = useState<number | null>(null);
   const [numPages, setNumPages] = useState(0);
-  // Lazy initialiser reads the last known page from localStorage so the
-  // reader resumes exactly where the user left off. Clamped to numPages
-  // once the PDF reports its total length (see onLoadSuccess below).
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [gestureEnabled, setGestureEnabled] = useState(false);
-  // SSR-safe initial value; the real tone is restored on mount. Without
-  // this guard the first paint would always be "Día" even for users who
-  // picked Sepia/Noche, causing a visible flash.
   const [tone, setTone] = useState<ReaderTone>("light");
+  const [voice, setVoice] = useState<NarratorVoice>("rous");
+  const [pageNarration, setPageNarration] = useState<PageNarration | null>(null);
+  // Modo "narración continua": cuando el usuario aprieta Iniciar
+  // narración encendemos este flag. Se mantiene encendido aunque
+  // cambien la página (manual, teclado o gestos) o termine la
+  // página actual — el effect de auto-reanudación se encarga de
+  // arrancar la siguiente. Stop o un error lo apagan.
+  const [autoPlayNarration, setAutoPlayNarration] = useState(false);
+  const [resumedFromPage, setResumedFromPage] = useState<number | null>(null);
+  const [pdfComponents, setPdfComponents] = useState<{
+    Document: (typeof import("react-pdf"))["Document"];
+    Page: (typeof import("react-pdf"))["Page"];
+  } | null>(null);
+
+  // Restore persisted tone + voice once mounted (SSR-safe).
   useEffect(() => {
     setTone(readSavedTone());
+    setVoice(readSavedVoice());
   }, []);
   useEffect(() => {
     try {
       window.localStorage.setItem(TONE_STORAGE_KEY, tone);
     } catch {
-      // Ignore storage failures (quota, private mode, etc.)
+      // ignore storage failures
     }
   }, [tone]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VOICE_STORAGE_KEY, voice);
+    } catch {
+      // ignore storage failures
+    }
+  }, [voice]);
+
+  const zoomIn = useCallback(() => setZoom((z) => nextZoomUp(z)), []);
+  const zoomOut = useCallback(() => setZoom((z) => nextZoomDown(z)), []);
+  const resetZoom = useCallback(() => setZoom(DEFAULT_ZOOM), []);
+  const canZoomIn = zoom < ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+  const canZoomOut = zoom > ZOOM_LEVELS[0];
+
   const cycleTone = useCallback(() => {
     setTone((current) => {
       const next = TONE_ORDER[(TONE_ORDER.indexOf(current) + 1) % TONE_ORDER.length];
@@ -124,56 +151,95 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
     });
   }, []);
 
-  const zoomIn = useCallback(
-    () => setZoom((z) => nextZoomUp(z)),
-    [],
-  );
-  const zoomOut = useCallback(
-    () => setZoom((z) => nextZoomDown(z)),
-    [],
-  );
-  const resetZoom = useCallback(() => setZoom(DEFAULT_ZOOM), []);
-  const canZoomIn = zoom < ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
-  const canZoomOut = zoom > ZOOM_LEVELS[0];
-
-  // Reset zoom whenever the user opens a different book — a comfortable
-  // zoom for one PDF is rarely the right one for another (font sizes,
-  // page geometry).
+  // Reset zoom whenever the user opens a different book.
   useEffect(() => {
     setZoom(DEFAULT_ZOOM);
   }, [book.id]);
+
   const {
     enabled: focusEnabled,
     enable: enableFocus,
     disable: disableFocus,
     notificationsMuted,
   } = useFocusMode();
-  const toggleGestures = () => setGestureEnabled((v) => !v);
+  const toggleFocus = useCallback(() => {
+    if (focusEnabled) disableFocus();
+    else enableFocus();
+  }, [focusEnabled, enableFocus, disableFocus]);
+  const toggleGestures = useCallback(() => setGestureEnabled((v) => !v), []);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
-  // Engagement tracking for the Analítica section. Counts only seconds
-  // while the user is *actively reading* — see reading-tracker.ts for the
-  // exact gates (presence + soft idle + recent reading proof).
+  // Engagement tracking.
   const { notifyReadingActivity } = useReadingSessionTracker(book.id);
 
-  // Each page change is a strong reading signal — tells the tracker the
-  // user is making real progress, not just parked on an open tab.
   useEffect(() => {
     if (numPages > 0) notifyReadingActivity();
   }, [currentPage, numPages, notifyReadingActivity]);
-  // Brief toast shown when the user resumes a book on a page > 1 so
-  // the jump is not surprising. Suppressed entirely while focus mode
-  // is active — that is the whole point of the mute flag.
-  const [resumedFromPage, setResumedFromPage] = useState<number | null>(null);
-  const [pdfComponents, setPdfComponents] = useState<{
-    Document: (typeof import("react-pdf"))["Document"];
-    Page: (typeof import("react-pdf"))["Page"];
-  } | null>(null);
 
-  // Global key handlers. Focus mode "owns" the Escape key first — pressing
-  // it while focused exits focus; a second press leaves the reader. The
-  // arrow / PageDown / PageUp keys always navigate pages, which is the
-  // only mouse-free way to turn pages while the footer is hidden in focus
-  // mode.
+  // -------------------------------------------------------------------------
+  // Narración: extracción de texto + audio
+  // -------------------------------------------------------------------------
+
+  // Extraemos el texto + cajas de la página apenas la página está
+  // disponible. Esto deja al usuario apretar "Iniciar narración"
+  // sin latencia de extracción.
+  useEffect(() => {
+    if (!pdfDocRef.current || numPages === 0) return;
+    const doc = pdfDocRef.current;
+    let cancelled = false;
+    setPageNarration(null);
+    extractPageNarration(doc as Parameters<typeof extractPageNarration>[0], currentPage)
+      .then((data) => {
+        if (!cancelled) setPageNarration(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPageNarration({
+            paragraphs: [],
+            rects: [],
+            pageSize: { width: 0, height: 0 },
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, numPages]);
+
+  // Memoizamos la lista de párrafos para no romper la identidad
+  // del array entre renders cuando pageNarration es el mismo objeto.
+  const narratorParagraphs = useMemo(
+    () => pageNarration?.paragraphs ?? [],
+    [pageNarration],
+  );
+
+  // Cuando la narración termina la última frase de la página, este
+  // handler avanza a la siguiente. La auto-reanudación la dispara
+  // el effect que vigila pageNarration + autoPlayNarration. Si ya
+  // estamos en la última, apagamos el modo continuo en lugar de
+  // quedarnos colgados intentando reanudar.
+  const handleNarrationFinished = useCallback(() => {
+    setCurrentPage((p) => {
+      if (p >= numPages) {
+        setAutoPlayNarration(false);
+        return p;
+      }
+      return p + 1;
+    });
+  }, [numPages]);
+
+  const narrator = useAudioNarrator({
+    paragraphs: narratorParagraphs,
+    voice,
+    resetKey: `${book.id}:${currentPage}`,
+    onFinished: handleNarrationFinished,
+  });
+
+  // -------------------------------------------------------------------------
+  // Keyboard
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -187,7 +253,6 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
         return;
       }
 
-      // Toggle focus with `f` (only when not editing text).
       if (!isEditable && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         if (focusEnabled) disableFocus();
@@ -197,10 +262,6 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
 
       if (isEditable) return;
 
-      // Zoom keys — accept both bare keys and Cmd/Ctrl combos so the
-      // shortcut feels native to muscle memory. We only intercept when
-      // a modifier is held (otherwise we'd block users from typing "+"
-      // into any future text field that might appear).
       if (e.key === "+" || e.key === "=") {
         e.preventDefault();
         zoomIn();
@@ -217,7 +278,12 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
         return;
       }
 
-      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
+      if (
+        e.key === "ArrowRight" ||
+        e.key === "ArrowDown" ||
+        e.key === "PageDown" ||
+        e.key === " "
+      ) {
         e.preventDefault();
         setCurrentPage((p) => Math.min(p + 1, numPages));
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
@@ -227,102 +293,146 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onBack, focusEnabled, numPages, disableFocus, enableFocus, zoomIn, zoomOut, resetZoom]);
+  }, [
+    onBack,
+    focusEnabled,
+    numPages,
+    disableFocus,
+    enableFocus,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+  ]);
 
-  // Persist the current page per book so the next open resumes here.
-  // Only write once numPages is known so we never store 0 or a clamp-
-  // corrected value that doesn't match a user action.
+  // Persist current page per book.
   useEffect(() => {
     if (numPages === 0) return;
     try {
-      window.localStorage.setItem(
-        PAGE_STORAGE_KEY(book.id),
-        String(currentPage),
-      );
+      window.localStorage.setItem(PAGE_STORAGE_KEY(book.id), String(currentPage));
     } catch {
-      // Ignore storage failures (quota, private mode, etc.)
+      // ignore
     }
   }, [book.id, currentPage, numPages]);
 
-  // Auto-dismiss the "resumed from page N" toast after 4 s.
+  // Resume toast auto-dismiss.
   useEffect(() => {
     if (resumedFromPage === null) return;
     const id = window.setTimeout(() => setResumedFromPage(null), 4000);
     return () => window.clearTimeout(id);
   }, [resumedFromPage]);
 
-  // Lazy-load react-pdf so the PDF engine only hits the bundle when needed
+  // Lazy-load react-pdf.
   useEffect(() => {
     let cancelled = false;
-
     void import("react-pdf").then((module) => {
       module.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
         "pdfjs-dist/build/pdf.worker.min.mjs",
         import.meta.url,
       ).toString();
-
       if (!cancelled) {
-        setPdfComponents({
-          Document: module.Document,
-          Page: module.Page,
-        });
+        setPdfComponents({ Document: module.Document, Page: module.Page });
       }
     });
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Track container width for responsive page sizing
+  // Container size for responsive page sizing.
   useEffect(() => {
     const container = pagesContainerRef.current;
     if (!container) return;
-
     const updateDims = () => {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      setContainerDims((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      setContainerDims((prev) =>
+        prev.width === w && prev.height === h ? prev : { width: w, height: h },
+      );
     };
-
     const resizeObserver = new ResizeObserver(updateDims);
-
     updateDims();
     resizeObserver.observe(container);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
+    return () => resizeObserver.disconnect();
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Navigation
-  // ---------------------------------------------------------------------------
+  const goToNextPage = useCallback(
+    () => setCurrentPage((p) => Math.min(p + 1, numPages)),
+    [numPages],
+  );
+  const goToPrevPage = useCallback(
+    () => setCurrentPage((p) => Math.max(p - 1, 1)),
+    [],
+  );
 
-  const goToNextPage = () => {
-    setCurrentPage((p) => Math.min(p + 1, numPages));
-  };
-
-  const goToPrevPage = () => {
-    setCurrentPage((p) => Math.max(p - 1, 1));
-  };
-
-  // Compute the best-fit page dimension so the PDF fills the viewport without overflow.
-  // Available space subtracts padding from each axis, then clamps to reasonable bounds.
+  // Page rendering size.
   const availW = Math.min(Math.max(containerDims.width - 48, 280), 820);
-  const availH = Math.max(containerDims.height - 32, 200); // 16px top + bottom padding
-  // Width that exactly fits the container at zoom = 1. We always express
-  // the page in terms of width (react-pdf derives height from the page
-  // ratio) so zooming is a single multiplication.
+  const availH = Math.max(containerDims.height - 32, 200);
   const fitWidth =
-    pageRatio !== null && availH * pageRatio <= availW
-      ? availH * pageRatio
-      : availW;
-  const pageProp: { width: number } = { width: fitWidth * zoom };
+    pageRatio !== null && availH * pageRatio <= availW ? availH * pageRatio : availW;
+  const renderedWidth = fitWidth * zoom;
+  const pageProp: { width: number } = { width: renderedWidth };
 
   const Document = pdfComponents?.Document;
   const Page = pdfComponents?.Page;
   const isLoaded = numPages > 0;
+
+  // Highlight scale and active rects.
+  const renderScale = useMemo(() => {
+    if (!pageNarration || pageNarration.pageSize.width <= 0) return 1;
+    return renderedWidth / pageNarration.pageSize.width;
+  }, [pageNarration, renderedWidth]);
+
+  const activeRects = useMemo(() => {
+    if (!pageNarration) return [];
+    if (narrator.activeParagraph === null) return [];
+    return pageNarration.rects[narrator.activeParagraph] ?? [];
+  }, [pageNarration, narrator.activeParagraph]);
+
+  const handleStartNarration = useCallback(() => {
+    setAutoPlayNarration(true);
+    void narrator.play(0);
+  }, [narrator]);
+  const handleStopNarration = useCallback(() => {
+    setAutoPlayNarration(false);
+    narrator.stop();
+  }, [narrator]);
+
+  // Auto-reanudación al aterrizar en una página nueva mientras el
+  // modo continuo sigue prendido. Cubre los tres caminos por los
+  // que el usuario llega a otra página: gestos, teclado / botones
+  // de footer y avance automático tras terminar la página anterior.
+  // Si la nueva página no tiene texto narrable saltamos sola a la
+  // siguiente para no quedarnos colgados en una página de imagen.
+  const { status: narratorStatus, play: narratorPlay } = narrator;
+  useEffect(() => {
+    if (!autoPlayNarration) return;
+    if (!pageNarration) return;
+    if (narratorStatus !== "idle") return;
+    if (pageNarration.paragraphs.length === 0) {
+      if (currentPage < numPages) {
+        setCurrentPage((p) => Math.min(p + 1, numPages));
+      } else {
+        setAutoPlayNarration(false);
+      }
+      return;
+    }
+    void narratorPlay(0);
+  }, [
+    pageNarration,
+    autoPlayNarration,
+    narratorStatus,
+    narratorPlay,
+    currentPage,
+    numPages,
+  ]);
+
+  // Si la narración cae en error apagamos el modo continuo para no
+  // seguir pegándole al backend con párrafos rotos en cada página.
+  useEffect(() => {
+    if (narratorStatus === "error" && autoPlayNarration) {
+      setAutoPlayNarration(false);
+    }
+  }, [narratorStatus, autoPlayNarration]);
 
   return (
     <>
@@ -337,302 +447,226 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
             : "bg-slate-50/70 dark:bg-zinc-950"
         }`}
       >
-        {/* ----------------------------------------------------------------
-          Header — hidden during focus mode for full immersion. All
-          critical actions (exit, page nav) are reachable via the floating
-          FocusMode overlay and keyboard shortcuts.
-        ---------------------------------------------------------------- */}
+        {/* --------------------------------------------------------------
+            Header — en modo lectura normal muestra navegación a la
+            izquierda + título + acciones a la derecha. En focus mode
+            ocultamos navegación y título pero mantenemos las dos
+            features principales (Focus y Audiolibro) y Ajustes a la
+            derecha, sobre el wash, para que el usuario nunca quede
+            sin acceso a las herramientas.
+        -------------------------------------------------------------- */}
         <header
-          className={`sticky top-0 z-10 border-b border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 ${
-            focusEnabled ? "hidden" : ""
+          className={`sticky top-0 z-[60] transition-colors duration-500 ${
+            focusEnabled
+              ? "border-transparent bg-transparent"
+              : "border-b border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95"
           }`}
         >
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-6 py-4 sm:px-8">
-            {/* Back button */}
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-            >
-              Volver
-            </button>
-
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-            >
-              <DashboardIcon />
-              Dashboard
-            </Link>
-
-            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700" />
-
-            {/* Book title */}
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-lg">
-              {book.displayName ?? book.filename}
-            </h1>
-
-            {/* Page navigation controls */}
-            {isLoaded && (
-              <div className="flex items-center gap-2">
+          <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-3.5 sm:px-8">
+            {!focusEnabled && (
+              <>
                 <button
                   type="button"
-                  onClick={goToPrevPage}
-                  disabled={currentPage <= 1}
-                  aria-label="Página anterior"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  onClick={onBack}
+                  aria-label="Volver a la biblioteca"
+                  title="Volver"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
                 >
-                  <ChevronUpIcon />
+                  <BackIcon />
                 </button>
 
-                <span className="min-w-[4.5rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-zinc-400">
-                  {currentPage} / {numPages}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={goToNextPage}
-                  disabled={currentPage >= numPages}
-                  aria-label="Página siguiente"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                <Link
+                  href="/dashboard"
+                  aria-label="Ir al dashboard"
+                  title="Dashboard"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
                 >
-                  <ChevronDownIcon />
-                </button>
-              </div>
+                  <DashboardIcon />
+                </Link>
+
+                <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700" />
+
+                <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-[-0.03em] text-slate-950 dark:text-zinc-50 sm:text-lg">
+                  {book.displayName ?? book.filename}
+                </h1>
+              </>
             )}
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
+            {/* Spacer cuando el header está vacío a la izquierda
+                (focus mode) — empuja los menús al borde derecho. */}
+            {focusEnabled && <div className="flex-1" />}
 
-            {/* Zoom cluster — symmetric −/% / + pill. The middle button
-                shows the current zoom and resets to 100% on click. */}
-            {isLoaded && (
-              <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-                <button
-                  type="button"
-                  onClick={zoomOut}
-                  disabled={!canZoomOut}
-                  aria-label="Reducir zoom"
-                  title="Reducir zoom (−)"
-                  className="inline-flex h-8 w-8 items-center justify-center transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-zinc-700"
-                >
-                  <MinusIcon />
-                </button>
-                <button
-                  type="button"
-                  onClick={resetZoom}
-                  aria-label="Restablecer zoom"
-                  title="Restablecer zoom (0)"
-                  className="inline-flex h-8 min-w-[3.25rem] items-center justify-center border-x border-slate-200 tabular-nums transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:hover:bg-zinc-700"
-                >
-                  {Math.round(zoom * 100)}%
-                </button>
-                <button
-                  type="button"
-                  onClick={zoomIn}
-                  disabled={!canZoomIn}
-                  aria-label="Aumentar zoom"
-                  title="Aumentar zoom (+)"
-                  className="inline-flex h-8 w-8 items-center justify-center transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-zinc-700"
-                >
-                  <PlusIcon />
-                </button>
-              </div>
-            )}
-
-            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
-
-            {/* Reading comfort tone — cycles light → sepia → dark. Affects
-                only the PDF canvas (via CSS filter), not the surrounding UI. */}
-            {isLoaded && (
-              <button
-                type="button"
-                onClick={cycleTone}
-                aria-label={`Tono de lectura: ${toneLabel(tone)}`}
-                title="Cambiar tono de lectura"
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                <ToneIcon tone={tone} />
-                {toneLabel(tone)}
-              </button>
-            )}
-
-            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
-
-            {/* Gesture toggle */}
-            <button
-              type="button"
+            <GestosButton
+              active={gestureEnabled}
               onClick={toggleGestures}
-              aria-pressed={gestureEnabled}
-              title="Navegar con gestos de mano"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                gestureEnabled
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400"
-                  : "border-slate-200 bg-white text-slate-600 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
-              }`}
-            >
-              <HandIcon active={gestureEnabled} />
-              Gestos
-            </button>
+              compact={focusEnabled}
+            />
 
-            {/* Deep Focus toggle */}
-            <button
-              type="button"
-              onClick={enableFocus}
-              aria-pressed={focusEnabled}
-              title="Modo Concentración Profunda (F)"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-[1px] hover:shadow-[0_12px_22px_rgba(15,23,42,0.22)] dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              <FocusIcon />
-              Focus
-            </button>
+            <FocusButton
+              active={focusEnabled}
+              onClick={toggleFocus}
+              compact={focusEnabled}
+            />
 
-            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 max-sm:hidden" />
-            <ThemeToggle />
+            {isLoaded && (
+              <AudiolibroMenu
+                status={narrator.status}
+                voice={voice}
+                onVoiceChange={setVoice}
+                onPlay={handleStartNarration}
+                onStop={handleStopNarration}
+                error={narrator.error}
+                hasContent={(pageNarration?.paragraphs.length ?? 0) > 0}
+                compact={focusEnabled}
+                autoPlay={autoPlayNarration}
+              />
+            )}
+
+            <SettingsMenu
+              zoom={zoom}
+              canZoomIn={canZoomIn}
+              canZoomOut={canZoomOut}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onZoomReset={resetZoom}
+              tone={tone}
+              onToneChange={(next) => {
+                if (next !== tone) setTone(next);
+                else cycleTone();
+              }}
+              compact={focusEnabled}
+            />
           </div>
         </header>
 
-        {/* ----------------------------------------------------------------
-          Page canvas
-
-          Two-layer container so zoom works cleanly:
-
-          1. Outer (`pagesContainerRef`) — scrollable, max-width responsive,
-             measured by the ResizeObserver to drive `fitWidth`.
-          2. Inner — `min-h-full min-w-full` flex centerer. When the page
-             fits, this layer is exactly the size of the viewport and
-             centers the page. When the page exceeds the viewport (zoom
-             > 1) the flex container grows to the page's intrinsic size,
-             which makes the outer scrollable area scroll naturally
-             without the well-known "centered content gets clipped"
-             flexbox quirk.
-        ---------------------------------------------------------------- */}
+        {/* --------------------------------------------------------------
+            Page canvas
+        -------------------------------------------------------------- */}
         <div
           ref={pagesContainerRef}
           className={`mx-auto w-full flex-1 overflow-auto transition-[padding,max-width] duration-500 ease-out ${
             focusEnabled
               ? "max-w-3xl px-6 py-10 sm:px-12 lg:px-16"
-              : "max-w-6xl px-4 py-4 sm:px-6 lg:px-8"
+              : "max-w-6xl px-4 py-6 sm:px-6 lg:px-8"
           }`}
         >
           <div className="flex min-h-full min-w-full items-center justify-center">
-          {Document && Page ? (
-            <Document
-              file={book.fileUrl}
-              loading={<PageSkeleton />}
-              onLoadSuccess={({ numPages: total }) => {
-                setNumPages(total);
-                setPageRatio(null); // reset until first page reports its ratio
-                // Clamp the restored page to the PDF's actual length and
-                // show a toast if we resumed past page 1.
-                setCurrentPage((p) => {
-                  const clamped = Math.min(Math.max(p, 1), total);
-                  if (clamped > 1) setResumedFromPage(clamped);
-                  return clamped;
-                });
-                // Persist page_count on the backend the first time we see
-                // a value (or when it has drifted). Used by the library to
-                // render a per-book reading-progress bar. Best-effort:
-                // failure here must not interrupt reading.
-                if (total > 0 && book.pageCount !== total) {
-                  void authedFetch(`${API_BASE_URL}/files/${book.id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ page_count: total }),
-                  })
-                    .then((res) => {
-                      if (res.ok) onPageCountResolved?.(total);
+            {Document && Page ? (
+              <Document
+                file={book.fileUrl}
+                loading={<PageSkeleton />}
+                onLoadSuccess={(pdf) => {
+                  pdfDocRef.current = pdf as unknown as PdfDocProxy;
+                  setNumPages(pdf.numPages);
+                  setPageRatio(null);
+                  setCurrentPage((p) => {
+                    const clamped = Math.min(Math.max(p, 1), pdf.numPages);
+                    if (clamped > 1) setResumedFromPage(clamped);
+                    return clamped;
+                  });
+                  if (pdf.numPages > 0 && book.pageCount !== pdf.numPages) {
+                    void authedFetch(`${API_BASE_URL}/files/${book.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ page_count: pdf.numPages }),
                     })
-                    .catch(() => {
-                      // Network-level failure: silently ignore; next open
-                      // will retry. No user-facing toast — this is a
-                      // background sync, not an explicit user action.
-                    });
-                }
-              }}
-              error={
-                <div className="rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
-                  No se pudo cargar el PDF.
-                </div>
-              }
-            >
-              {/* Animate page transitions with a unique key per page number */}
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={currentPage}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="flex justify-center"
-                >
-                  <div
-                    className={`overflow-hidden rounded-[1.75rem] border transition-[background-color,filter] duration-500 ${
-                      focusEnabled
-                        ? "border-white/5 bg-zinc-900 shadow-none"
-                        : "border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900"
-                    }`}
-                    style={{ filter: toneFilter(tone) }}
-                  >
-                    <Page
-                      pageNumber={currentPage}
-                      {...pageProp}
-                      onLoadSuccess={(page) => {
-                        const vp = page.getViewport({ scale: 1 });
-                        const ratio = vp.width / vp.height;
-                        setPageRatio((prev) => (prev === ratio ? prev : ratio));
-                      }}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                    />
+                      .then((res) => {
+                        if (res.ok) onPageCountResolved?.(pdf.numPages);
+                      })
+                      .catch(() => {
+                        // background sync — ignore
+                      });
+                  }
+                }}
+                error={
+                  <div className="rounded-3xl border border-red-100 bg-red-50 px-6 py-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+                    No se pudo cargar el PDF.
                   </div>
-                </motion.div>
-              </AnimatePresence>
-            </Document>
-          ) : (
-            <PageSkeleton />
-          )}
+                }
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={currentPage}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="flex justify-center"
+                  >
+                    <div
+                      className={`relative overflow-hidden rounded-[1.75rem] border transition-[background-color] duration-500 ${
+                        focusEnabled
+                          ? "border-white/5 bg-zinc-900 shadow-none"
+                          : "border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.05)] dark:border-zinc-700 dark:bg-zinc-900"
+                      }`}
+                    >
+                      <div
+                        className="transition-[filter] duration-500"
+                        style={{ filter: toneFilter(tone) }}
+                      >
+                        <Page
+                          pageNumber={currentPage}
+                          {...pageProp}
+                          onLoadSuccess={(page) => {
+                            const vp = page.getViewport({ scale: 1 });
+                            const ratio = vp.width / vp.height;
+                            setPageRatio((prev) => (prev === ratio ? prev : ratio));
+                          }}
+                          renderAnnotationLayer={false}
+                          renderTextLayer={false}
+                        />
+                      </div>
+                      <ParagraphHighlight
+                        rects={activeRects}
+                        scale={renderScale}
+                        tone={tone}
+                        isDark={isDark}
+                      />
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
+              </Document>
+            ) : (
+              <PageSkeleton />
+            )}
           </div>
         </div>
 
-        {/* ----------------------------------------------------------------
-          Bottom page navigation (convenience for mouse / touch users).
-          Hidden during focus mode — page turns happen with arrow keys,
-          gestures or the floating overlay.
-        ---------------------------------------------------------------- */}
+        {/* --------------------------------------------------------------
+            Footer — page navigation only. Hidden during focus mode.
+        -------------------------------------------------------------- */}
         {isLoaded && !focusEnabled && (
           <footer className="sticky bottom-0 z-10 border-t border-slate-200/80 bg-white/92 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
-            <div className="mx-auto flex max-w-6xl items-center justify-center gap-4 px-6 py-3">
+            <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-6 py-3">
               <button
                 type="button"
                 onClick={goToPrevPage}
                 disabled={currentPage <= 1}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                aria-label="Página anterior"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
-                <ChevronUpIcon />
-                Anterior
+                <ChevronLeftIcon />
               </button>
 
-              <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-zinc-500">
-                {currentPage} de {numPages}
+              <span className="min-w-[6rem] text-center text-sm font-medium tabular-nums text-slate-600 dark:text-zinc-400">
+                {currentPage} / {numPages}
               </span>
 
               <button
                 type="button"
                 onClick={goToNextPage}
                 disabled={currentPage >= numPages}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                aria-label="Página siguiente"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
-                Siguiente
-                <ChevronDownIcon />
+                <ChevronRightIcon />
               </button>
             </div>
           </footer>
         )}
       </motion.section>
 
-      {/* Resume toast — fades in when the user reopens a book past page 1
-          and auto-dismisses a few seconds later. Suppressed while focus
-          mode is active so nothing breaks the calm. */}
+      {/* Resume toast */}
       <AnimatePresence>
         {resumedFromPage !== null && !notificationsMuted && (
           <motion.div
@@ -663,23 +697,129 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
         )}
       </AnimatePresence>
 
-      {/* Fixed overlays — live outside the scrollable section so they stay
-          anchored to the viewport corners at all times. */}
       <GestureCamera
         enabled={gestureEnabled}
         onNextPage={goToNextPage}
         onPrevPage={goToPrevPage}
       />
 
-      {/* Deep Focus overlay — driven by the global focus context. The
-          gesture toggle is plumbed through so the user can enable / disable
-          gestures from the floating chrome, since the regular header is
-          hidden in this state. */}
-      <FocusMode
-        gestureEnabled={gestureEnabled}
-        onToggleGestures={toggleGestures}
-      />
+      <FocusMode />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Focus button — pareja visual del botón de Audiolibro
+// ---------------------------------------------------------------------------
+
+function FocusButton({
+  active,
+  onClick,
+  compact,
+}: {
+  active: boolean;
+  onClick: () => void;
+  compact: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={active ? "Salir de Focus (Esc)" : "Modo Focus (F)"}
+      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold tracking-[-0.01em] transition-all ${
+        active
+          ? "border-emerald-300/70 bg-emerald-500/15 text-emerald-200 shadow-[0_4px_14px_rgba(16,185,129,0.18)] hover:bg-emerald-500/25"
+          : compact
+            ? "border-white/20 bg-white/10 text-white/90 backdrop-blur hover:bg-white/20"
+            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:text-zinc-100"
+      }`}
+    >
+      {active ? <FocusActiveDot /> : <FocusIcon />}
+      {active ? "En Focus" : "Focus"}
+    </button>
+  );
+}
+
+function FocusActiveDot() {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative inline-flex h-2 w-2 items-center justify-center"
+    >
+      <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
+      <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
+    </span>
+  );
+}
+
+function FocusIcon() {
+  return (
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4 8.5V6a2 2 0 0 1 2-2h2.5M20 8.5V6a2 2 0 0 0-2-2h-2.5M4 15.5V18a2 2 0 0 0 2 2h2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M12 9.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Gestos button — toggle de navegación con gestos
+// ---------------------------------------------------------------------------
+
+function GestosButton({
+  active,
+  onClick,
+  compact,
+}: {
+  active: boolean;
+  onClick: () => void;
+  compact: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={active ? "Desactivar gestos" : "Navegar con gestos de mano"}
+      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold tracking-[-0.01em] transition-all ${
+        active
+          ? compact
+            ? "border-emerald-300/70 bg-emerald-500/15 text-emerald-200"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400"
+          : compact
+            ? "border-white/20 bg-white/10 text-white/90 backdrop-blur hover:bg-white/20"
+            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:text-zinc-100"
+      }`}
+    >
+      <HandIcon active={active} />
+      Gestos
+    </button>
+  );
+}
+
+function HandIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+        active ? "text-emerald-400" : "text-current"
+      }`}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M18 11V9a2 2 0 0 0-4 0v-.5M14 8.5V6a2 2 0 0 0-4 0v3M10 9V5a2 2 0 0 0-4 0v8l-1.5-2a1.5 1.5 0 0 0-2.122 2.122L5 18a7 7 0 0 0 7 3.5 7 7 0 0 0 7-7v-3.5a2 2 0 0 0-4 0V11"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
   );
 }
 
@@ -699,153 +839,15 @@ function PageSkeleton() {
 // Icons
 // ---------------------------------------------------------------------------
 
-function PlusIcon() {
+function BackIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-3.5 w-3.5"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
       <path
-        d="M12 5.5v13M5.5 12h13"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
-function MinusIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-3.5 w-3.5"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M5.5 12h13"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
-function HandIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={`h-3.5 w-3.5 shrink-0 transition-colors duration-200 ${active ? "text-emerald-500" : "text-slate-400"}`}
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M18 11V9a2 2 0 0 0-4 0v-.5M14 8.5V6a2 2 0 0 0-4 0v3M10 9V5a2 2 0 0 0-4 0v8l-1.5-2a1.5 1.5 0 0 0-2.122 2.122L5 18a7 7 0 0 0 7 3.5 7 7 0 0 0 7-7v-3.5a2 2 0 0 0-4 0V11"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function ChevronUpIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M18 15.25 12 9l-6 6.25"
+        d="M15.25 5.75 9 12l6.25 6.25"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.7"
-      />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M6 9.25 12 15.5l6-6.25"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-      />
-    </svg>
-  );
-}
-
-function ToneIcon({ tone }: { tone: ReaderTone }) {
-  if (tone === "dark") {
-    return (
-      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-        <path
-          d="M20.25 14.5A8 8 0 0 1 9.5 3.75 8 8 0 1 0 20.25 14.5Z"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.6"
-        />
-      </svg>
-    );
-  }
-  if (tone === "sepia") {
-    return (
-      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-        <path
-          d="M6.5 4.75h9.25a3 3 0 0 1 3 3v11.5H9a2.5 2.5 0 0 1-2.5-2.5V4.75ZM6.5 16.75A2.5 2.5 0 0 0 4 19.25h13.75"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.6"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M12 3v2.25M12 18.75V21M3 12h2.25M18.75 12H21M5.75 5.75l1.6 1.6M16.65 16.65l1.6 1.6M5.75 18.25l1.6-1.6M16.65 7.35l1.6-1.6"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.6"
-      />
-    </svg>
-  );
-}
-
-function FocusIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-3.5 w-3.5"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M4 8.5V6a2 2 0 0 1 2-2h2.5M20 8.5V6a2 2 0 0 0-2-2h-2.5M4 15.5V18a2 2 0 0 0 2 2h2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M12 9.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.6"
       />
     </svg>
   );
@@ -853,18 +855,41 @@ function FocusIcon() {
 
 function DashboardIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-3.5 w-3.5"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
       <path
         d="M4.75 6.75a2 2 0 0 1 2-2h10.5a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V6.75ZM9.5 4.75v14.5M4.75 9.5h14.5"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M14.5 6 8.5 12l6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M9.5 6 15.5 12l-6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
       />
     </svg>
   );

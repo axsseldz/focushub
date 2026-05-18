@@ -1,33 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useFocusMode } from "@/lib/focus-mode";
 
-// Time on screen during focus was removed — a visible clock is itself a
-// micro-distraction. The session is still tracked silently for analytics.
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type FocusModeProps = {
-  /** Current state of the gesture-navigation toggle in the parent reader. */
-  gestureEnabled?: boolean;
-  /** Toggle gesture navigation. When provided, a control appears in the
-   *  floating chrome so the user can enable / disable gestures without
-   *  leaving focus mode (the regular header is hidden in this state). */
-  onToggleGestures?: () => void;
-};
-
-// ---------------------------------------------------------------------------
-// Hooks
-// ---------------------------------------------------------------------------
-
 /**
- * Requests fullscreen on <html> when `enabled` turns true and releases it
- * when it turns false. If the user presses Escape or otherwise exits
- * fullscreen, we call `onExit` so the parent can sync its state.
+ * Solicita fullscreen sobre <html> cuando `enabled` pasa a true y lo
+ * libera al apagarse. Si el usuario abandona fullscreen por su
+ * cuenta (Escape, etc.) llamamos a `onExit` para sincronizar.
  */
 function useFullscreen(enabled: boolean, onExit: () => void) {
   useEffect(() => {
@@ -36,8 +16,8 @@ function useFullscreen(enabled: boolean, onExit: () => void) {
     const el = document.documentElement;
     if (el.requestFullscreen && !document.fullscreenElement) {
       el.requestFullscreen().catch(() => {
-        // User or browser denied fullscreen — focus mode still works,
-        // just without the immersive window state.
+        // El usuario o el navegador rechazaron fullscreen — focus
+        // sigue funcionando, sin el wash a pantalla completa.
       });
     }
 
@@ -56,10 +36,9 @@ function useFullscreen(enabled: boolean, onExit: () => void) {
 }
 
 /**
- * Holds a screen wake lock while `enabled` is true so the display does not
- * dim or sleep during a focus block. Re-acquires the lock if the tab is
- * backgrounded and later returned to (wake locks are auto-released on
- * visibilitychange → hidden).
+ * Mantiene un wake lock de pantalla mientras `enabled` es true para
+ * que el monitor no se atenúe durante una sesión de foco profundo.
+ * Re-adquiere el lock al volver de un background.
  */
 function useWakeLock(enabled: boolean) {
   useEffect(() => {
@@ -73,7 +52,7 @@ function useWakeLock(enabled: boolean) {
       try {
         lock = await navigator.wakeLock.request("screen");
       } catch {
-        // Some browsers refuse unless the tab is visible; fine either way.
+        // Algunos navegadores rechazan si la pestaña no está visible.
       }
     };
 
@@ -95,154 +74,32 @@ function useWakeLock(enabled: boolean) {
 }
 
 /**
- * Reveals the floating chrome on pointer movement and re-hides it after a
- * short idle window. While disabled, always returns `true` so the chrome is
- * unaffected outside focus mode.
- */
-function useChromeReveal(enabled: boolean, idleMs = 2200) {
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    let timer: number | undefined;
-    const show = () => {
-      setVisible(true);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setVisible(false), idleMs);
-    };
-
-    // Schedule the initial reveal asynchronously so we never call setState
-    // synchronously from inside the effect body.
-    const initial = window.setTimeout(show, 0);
-    window.addEventListener("mousemove", show);
-    window.addEventListener("keydown", show);
-    window.addEventListener("touchstart", show);
-
-    return () => {
-      window.clearTimeout(initial);
-      window.clearTimeout(timer);
-      window.removeEventListener("mousemove", show);
-      window.removeEventListener("keydown", show);
-      window.removeEventListener("touchstart", show);
-    };
-  }, [enabled, idleMs]);
-
-  return enabled ? visible : true;
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-/**
  * FocusMode
  *
- * A distraction-free overlay for the PDF reader. Reads its enabled flag from
- * the global FocusModeContext. While active:
- *   · the tab enters fullscreen and acquires a screen wake lock
- *   · a soft charcoal wash fades in over the reader (z-40, pointer-events-none)
- *   · floating chrome (top pill: status, elapsed, gesture toggle, exit) auto
- *     hides after ~2 s of idle and reappears on any pointer / keyboard activity
- *
- * The wash sits at z-40 (under the gesture camera at z-50) so the camera
- * preview stays visible. The chrome lives at z-70 so it stays clickable.
+ * Wash translúcido + fullscreen + wake lock para sesiones de
+ * concentración. La salida y los toggles (audiolibro, ajustes) son
+ * accesibles desde el header — el chrome flotante de versiones
+ * anteriores fue retirado para reducir ruido visual.
  */
-export function FocusMode({ gestureEnabled, onToggleGestures }: FocusModeProps) {
+export function FocusMode() {
   const { enabled, disable } = useFocusMode();
 
   useFullscreen(enabled, disable);
   useWakeLock(enabled);
-  const chromeVisible = useChromeReveal(enabled);
 
   return (
     <AnimatePresence>
       {enabled && (
-        <>
-          {/* Soft palette wash. Pointer-events disabled so the reader stays
-              fully interactive underneath. Sits below the gesture camera
-              (z-50) so the camera preview is never obscured. */}
-          <motion.div
-            key="focus-wash"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.65, ease: [0.22, 0.61, 0.36, 1] }}
-            aria-hidden="true"
-            className="pointer-events-none fixed inset-0 z-[40] bg-[radial-gradient(ellipse_at_center,_rgba(20,22,28,0.28)_0%,_rgba(5,6,9,0.7)_100%)]"
-          />
-
-          {/* Floating chrome — only this layer captures pointer events. */}
-          <motion.div
-            key="focus-chrome"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: chromeVisible ? 1 : 0.08 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="fixed left-1/2 top-4 z-[70] -translate-x-1/2"
-            onMouseEnter={(event) => {
-              // While the chrome is dim, hovering it should restore full
-              // visibility so the user can read the buttons.
-              (event.currentTarget as HTMLDivElement).style.opacity = "1";
-            }}
-          >
-            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-1.5 text-xs text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md">
-              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-                En Focus
-              </span>
-              {onToggleGestures && (
-                <button
-                  type="button"
-                  onClick={onToggleGestures}
-                  aria-pressed={gestureEnabled ?? false}
-                  title="Activar / desactivar gestos"
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
-                    gestureEnabled
-                      ? "bg-emerald-400/20 text-emerald-200 hover:bg-emerald-400/30"
-                      : "bg-white/10 text-white/90 hover:bg-white/20"
-                  }`}
-                >
-                  <HandIcon active={gestureEnabled ?? false} />
-                  Gestos
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={disable}
-                className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold transition-colors hover:bg-white/25"
-              >
-                Salir
-              </button>
-            </div>
-          </motion.div>
-        </>
+        <motion.div
+          key="focus-wash"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.65, ease: [0.22, 0.61, 0.36, 1] }}
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[40] bg-[radial-gradient(ellipse_at_center,_rgba(20,22,28,0.28)_0%,_rgba(5,6,9,0.7)_100%)]"
+        />
       )}
     </AnimatePresence>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Icons
-// ---------------------------------------------------------------------------
-
-function HandIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={`h-3 w-3 shrink-0 transition-colors ${
-        active ? "text-emerald-300" : "text-white/80"
-      }`}
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d="M18 11V9a2 2 0 0 0-4 0v-.5M14 8.5V6a2 2 0 0 0-4 0v3M10 9V5a2 2 0 0 0-4 0v8l-1.5-2a1.5 1.5 0 0 0-2.122 2.122L5 18a7 7 0 0 0 7 3.5 7 7 0 0 0 7-7v-3.5a2 2 0 0 0-4 0V11"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
   );
 }

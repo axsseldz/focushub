@@ -57,3 +57,23 @@ class ReadingSession(Base):
     __table_args__ = (
         Index("ix_reading_sessions_started_at", "started_at"),
     )
+
+
+class AudioCache(Base):
+    """Persistent cache of ElevenLabs-generated narration.
+
+    The primary key is a SHA-256 of (text + voice_id), so the same
+    paragraph synthesised with two different voices yields two rows.
+    Cache hits skip the ElevenLabs round-trip entirely and serve the
+    on-disk MP3 directly — that's the entire point of this table."""
+
+    __tablename__ = "audio_cache"
+
+    text_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    voice_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
