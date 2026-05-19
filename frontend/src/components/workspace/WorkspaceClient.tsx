@@ -84,6 +84,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [assetsCollapsed, setAssetsCollapsed] = useState(false);
 
   // Compiled PDF state. ``pdfUrl`` is a blob URL the viewer consumes;
   // ``compileError`` carries the tail of the tectonic log when the
@@ -502,6 +503,8 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         uploadcareKey={UPLOADCARE_KEY}
         onUpload={handleUploadAssets}
         onDelete={handleDeleteAsset}
+        collapsed={assetsCollapsed}
+        onToggleCollapsed={() => setAssetsCollapsed((c) => !c)}
       />
 
       <section className="flex min-w-0 min-h-0 flex-1 flex-col">
