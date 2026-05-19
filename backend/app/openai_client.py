@@ -106,12 +106,15 @@ class AssetInfo:
     The model only sees ``file_name`` for LaTeX inclusion; ``file_url``
     and ``mime_type`` show up in the context block so the model can
     decide whether an asset is an image worth inserting via
-    ``\\includegraphics``.
+    ``\\includegraphics``. ``text_excerpt`` is the pre-extracted body
+    of textual assets (e.g. PDFs) — included verbatim so the model can
+    answer questions or quote from the user's uploaded documents.
     """
 
     file_name: str
     file_url: str
     mime_type: str | None
+    text_excerpt: str | None = None
 
 
 @dataclass
@@ -127,6 +130,16 @@ class StreamedResult:
     latex_source: str | None
 
 
+def _classify_asset(asset: AssetInfo) -> str:
+    mime = (asset.mime_type or "").lower()
+    name = asset.file_name.lower()
+    if mime.startswith("image/"):
+        return "imagen"
+    if mime == "application/pdf" or name.endswith(".pdf"):
+        return "pdf"
+    return "archivo"
+
+
 def _build_context_block(
     latex_source: str,
     assets: list[AssetInfo],
@@ -134,17 +147,40 @@ def _build_context_block(
     if assets:
         lines = []
         for a in assets:
-            kind = "imagen" if (a.mime_type or "").startswith("image/") else "archivo"
+            kind = _classify_asset(a)
             lines.append(f"- `{a.file_name}` ({kind}) — URL: {a.file_url}")
         assets_repr = "\n".join(lines)
     else:
         assets_repr = "(ninguno por ahora)"
+
+    # PDFs (and any other textual asset with an excerpt) get their body
+    # inlined so the model can quote / summarize / answer questions
+    # against the uploaded document. Each excerpt is delimited and
+    # labeled with the source file name.
+    excerpt_sections: list[str] = []
+    for a in assets:
+        if not a.text_excerpt:
+            continue
+        excerpt_sections.append(
+            f"### `{a.file_name}`\n```text\n{a.text_excerpt.strip()}\n```",
+        )
+    excerpts_block = (
+        "\n\n## Contenido de los PDFs adjuntos\n"
+        "Texto extraído de los archivos subidos por el usuario. Úsalo como "
+        "referencia cuando el usuario pida resúmenes, citas o preguntas "
+        "sobre el contenido.\n\n" + "\n\n".join(excerpt_sections)
+        if excerpt_sections
+        else ""
+    )
+
     source_repr = latex_source.strip() or "(documento vacío)"
     return (
         f"## Documento LaTeX actual\n```latex\n{source_repr}\n```\n\n"
-        "## Assets disponibles\n"
-        "Refiérete a cada uno por su nombre EXACTO en `\\includegraphics`.\n"
-        f"{assets_repr}\n"
+        "## Recursos disponibles\n"
+        "Refiérete a cada uno por su nombre EXACTO en `\\includegraphics` "
+        "para imágenes.\n"
+        f"{assets_repr}"
+        f"{excerpts_block}\n"
     )
 
 

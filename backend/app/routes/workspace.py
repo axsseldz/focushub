@@ -34,6 +34,7 @@ from app.openai_client import (
     StreamedResult,
     stream_chat_turn,
 )
+from app.pdf_extract import extract_pdf_text_from_url
 from app.schemas import (
     WorkspaceAssetCreate,
     WorkspaceAssetResponse,
@@ -209,12 +210,22 @@ def create_asset(
     user_id: str = Depends(require_user_id),
 ) -> WorkspaceAsset:
     project = _get_owned_project(db, project_id, user_id)
+    file_name = payload.file_name.strip()
+    mime_type = payload.mime_type
+    # For PDFs, pre-extract the text once so subsequent chat turns can
+    # include the body as context without re-downloading. Failures are
+    # tolerated — the file stays usable with just its name + URL.
+    text_excerpt: str | None = None
+    is_pdf = (mime_type == "application/pdf") or file_name.lower().endswith(".pdf")
+    if is_pdf:
+        text_excerpt = extract_pdf_text_from_url(payload.file_url)
     asset = WorkspaceAsset(
         project_id=project.id,
         user_id=user_id,
-        file_name=payload.file_name.strip(),
+        file_name=file_name,
         file_url=payload.file_url,
-        mime_type=payload.mime_type,
+        mime_type=mime_type,
+        text_excerpt=text_excerpt,
     )
     db.add(asset)
     db.commit()
@@ -315,6 +326,7 @@ async def post_chat_message(
             file_name=a.file_name,
             file_url=a.file_url,
             mime_type=a.mime_type,
+            text_excerpt=a.text_excerpt,
         )
         for a in asset_rows
     ]

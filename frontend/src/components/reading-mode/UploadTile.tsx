@@ -57,7 +57,7 @@ export function UploadTile({
         type="button"
         onClick={handleClick}
         disabled={isUploading}
-        aria-label="Subir un nuevo libro"
+        aria-label="Subir un nuevo archivo"
         whileTap={isUploading ? undefined : { scale: 0.98 }}
         transition={{ duration: 0.12, ease: "easeOut" }}
         className={`relative block aspect-[3/4] w-full overflow-hidden rounded-xl border-2 border-dashed transition-[border-color,background-color] duration-200 ${
@@ -82,7 +82,7 @@ export function UploadTile({
             </motion.span>
           )}
           <span className="text-[12px] font-medium tracking-[-0.01em]">
-            {isUploading ? "Subiendo…" : "Subir libro"}
+            {isUploading ? "Subiendo…" : "Subir archivo"}
           </span>
         </div>
       </motion.button>
@@ -91,10 +91,10 @@ export function UploadTile({
           BookCard del grid. */}
       <div className="mt-3.5 space-y-1.5">
         <h3 className="text-[14px] font-semibold leading-snug tracking-[-0.025em] text-slate-950 dark:text-zinc-50">
-          Agregar libro
+          Agregar archivo
         </h3>
         <p className="text-[12px] font-medium text-slate-500 dark:text-zinc-500">
-          PDF · hasta 50 MB
+          Archivo PDF · hasta 50 MB
         </p>
       </div>
 

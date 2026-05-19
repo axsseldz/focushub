@@ -37,75 +37,65 @@
   background-color: #ffffff;
 }
 
-.workspace-build-glow {
-  background: conic-gradient(
-    from 0deg,
-    rgba(16, 185, 129, 0) 0deg,
-    rgba(16, 185, 129, 0.22) 40deg,
-    rgba(59, 130, 246, 0.28) 110deg,
-    rgba(16, 185, 129, 0) 220deg,
-    rgba(168, 85, 247, 0.22) 290deg,
-    rgba(16, 185, 129, 0) 360deg
-  );
-  filter: blur(28px);
-  opacity: 0.55;
-  animation: workspace-glow-spin 9s linear infinite;
+/* Minimalist compile indicator — a thin indeterminate bar that sweeps
+   across the top edge of the canvas while the .tex is being built. */
+.workspace-progress-sweep {
+  animation: workspace-progress-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1)
+    infinite;
 }
 
-.workspace-build-shimmer {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0) 35%,
-    rgba(255, 255, 255, 0.55) 50%,
-    rgba(255, 255, 255, 0) 65%,
-    transparent 100%
-  );
-  animation: workspace-shimmer-sweep 2.4s ease-in-out infinite;
-  mix-blend-mode: overlay;
-}
-
-.workspace-build-pulse {
-  animation: workspace-pulse 1.4s ease-in-out infinite;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
-}
-
-@keyframes workspace-glow-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes workspace-shimmer-sweep {
+@keyframes workspace-progress-sweep {
   0% {
-    transform: translateX(-110%);
+    transform: translateX(-100%);
   }
   100% {
-    transform: translateX(110%);
+    transform: translateX(400%);
   }
 }
 
-@keyframes workspace-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(1.4);
-  }
+/* ----- Project card cover-art animations -----
+   Used by the premium-minimalist themes in ProjectCardCover.tsx. All
+   motion is intentionally slow (10–22 s loops, ease-in-out) — the
+   surface should feel alive, not animated. Only ``transform`` and
+   ``opacity`` so the GPU can run a wall of these cheaply. */
+
+@keyframes cover-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
 }
 
-@keyframes workspace-bounce {
-  0%,
-  80%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.6;
-  }
-  40% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
+@keyframes cover-soft-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.08); }
+}
+
+@keyframes cover-draw-loop {
+  0%   { stroke-dashoffset: 360; }
+  45%  { stroke-dashoffset: 0; }
+  55%  { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -360; }
+}
+
+@keyframes cover-pan {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(8px); }
+}
+
+@keyframes cover-field-drift {
+  0%, 100% { transform: scale(1) translate(0, 0); }
+  50%      { transform: scale(1.06) translate(4px, -3px); }
+}
+
+@keyframes cover-arc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cover-soft-shift {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(6px, -2px); }
+}
+
+@keyframes cover-breathe {
+  0%, 100% { transform: scale(1);     opacity: 0.92; }
+  50%      { transform: scale(1.025); opacity: 1; }
 }

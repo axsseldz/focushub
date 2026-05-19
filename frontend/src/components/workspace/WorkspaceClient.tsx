@@ -8,9 +8,9 @@ import { toast } from "sonner";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { PdfCanvas } from "@/lib/latex-render";
 import { readSSE } from "@/lib/sse";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { WorkspaceAssets } from "@/components/workspace/WorkspaceAssets";
 import { WorkspaceChat } from "@/components/workspace/WorkspaceChat";
+import { WorkspaceSettingsMenu } from "@/components/workspace/WorkspaceSettingsMenu";
 import { LaTeXPeekEditor } from "@/components/workspace/LaTeXPeekEditor";
 import type {
   SyncResponse,
@@ -29,6 +29,45 @@ type UploadedEntry = {
   name: string;
 };
 
+// LaTeX command we care about — matches both ``\includegraphics{x}`` and
+// ``\includegraphics[opts]{x}``. We don't try to parse the option block;
+// we only need the filename in the braces.
+const INCLUDEGRAPHICS_RE = /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g;
+
+function findMissingImageReferences(
+  latexSource: string,
+  assets: WorkspaceAsset[],
+): string[] {
+  if (!latexSource) return [];
+  const refs = new Set<string>();
+  for (const match of latexSource.matchAll(INCLUDEGRAPHICS_RE)) {
+    const ref = match[1].trim();
+    if (ref) refs.add(ref);
+  }
+  if (refs.size === 0) return [];
+
+  const exact = new Set<string>();
+  const baseNames = new Set<string>();
+  for (const a of assets) {
+    exact.add(a.file_name);
+    const dot = a.file_name.lastIndexOf(".");
+    if (dot > 0) baseNames.add(a.file_name.slice(0, dot));
+  }
+
+  // Preserve insertion order so the banner lists missing refs in the
+  // order they appear in the document.
+  const missing: string[] = [];
+  for (const ref of refs) {
+    if (exact.has(ref)) continue;
+    const refBase = ref.includes(".")
+      ? ref.slice(0, ref.lastIndexOf("."))
+      : ref;
+    if (baseNames.has(refBase)) continue;
+    missing.push(ref);
+  }
+  return missing;
+}
+
 export function WorkspaceClient({ projectId }: { projectId: string }) {
   const authedFetch = useAuthedFetch();
   const { isLoaded, isSignedIn } = useAuth();
@@ -44,6 +83,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const [syncing, setSyncing] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [chatCollapsed, setChatCollapsed] = useState(false);
 
   // Compiled PDF state. ``pdfUrl`` is a blob URL the viewer consumes;
   // ``compileError`` carries the tail of the tectonic log when the
@@ -387,6 +427,22 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
     }
   }, [authedFetch, project]);
 
+  const handleDownloadPdf = useCallback(() => {
+    if (!pdfUrl || !project) {
+      toast.error("El PDF aún no está listo.");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = pdfUrl;
+    const safeTitle = (project.title || "reporte")
+      .replace(/[^a-zA-Z0-9-_ ]+/g, "")
+      .trim() || "reporte";
+    a.download = `${safeTitle}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, [pdfUrl, project]);
+
   const handleRenameProject = useCallback(async () => {
     if (!project) return;
     const trimmed = titleDraft.trim();
@@ -417,6 +473,15 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const messages = useMemo(() => project?.messages ?? [], [project?.messages]);
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
 
+  // Anything the document references via ``\includegraphics`` that no
+  // longer exists in the asset list — typically because the user just
+  // deleted it. Surfaced as a banner on the canvas so the stale PDF is
+  // clearly marked as out-of-date.
+  const missingAssets = useMemo(
+    () => findMissingImageReferences(project?.latex_source ?? "", assets),
+    [project?.latex_source, assets],
+  );
+
   if (loading || !project) {
     return (
       <div className="flex h-screen items-center justify-center bg-white text-sm text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
@@ -443,12 +508,29 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 px-6 py-3 dark:border-zinc-800/80">
           <div className="flex min-w-0 items-center gap-3">
             <button
+              type="button"
               onClick={() => router.push("/workspace")}
-              className="text-[12px] text-slate-400 transition-colors hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-200"
-              aria-label="Volver"
+              aria-label="Volver al workspace"
+              title="Volver al workspace"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50"
             >
-              ←
+              <svg
+                aria-hidden="true"
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M15 6 9 12l6 6"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.9"
+                />
+              </svg>
+              <span>Volver</span>
             </button>
+            <div className="h-5 w-px bg-slate-200 dark:bg-zinc-700" />
             {editingTitle ? (
               <input
                 value={titleDraft}
@@ -494,20 +576,44 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPeekOpen(true)}
-              className="rounded-md border border-slate-200 px-3 py-1 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              type="button"
+              onClick={() => void compilePdf()}
+              disabled={compiling || sending}
+              title="Volver a compilar el documento"
+              aria-label="Compilar"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[12.5px] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50"
             >
-              Ver código
+              {compiling ? (
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-slate-700 dark:border-zinc-600 dark:border-t-zinc-200"
+                />
+              ) : (
+                <svg
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M4.5 12a7.5 7.5 0 0 1 13.2-4.85M19.5 5v3.5h-3.5M19.5 12a7.5 7.5 0 0 1-13.2 4.85M4.5 19v-3.5H8"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+              )}
+              <span>{compiling ? "Compilando" : "Compilar"}</span>
             </button>
-            <button
-              onClick={handleSync}
-              disabled={syncing || compiling}
-              title="Compila el PDF y lo agrega a tu biblioteca con el nombre del proyecto"
-              className="rounded-md bg-slate-900 px-3 py-1 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-950"
-            >
-              {syncing ? "Guardando…" : "Guardar en biblioteca"}
-            </button>
-            <ThemeToggle />
+            <WorkspaceSettingsMenu
+              onShowCode={() => setPeekOpen(true)}
+              onSyncToLibrary={handleSync}
+              onDownloadPdf={handleDownloadPdf}
+              syncing={syncing}
+              compiling={compiling}
+              pdfReady={!!pdfUrl}
+            />
             <UserButton />
           </div>
         </header>
@@ -517,6 +623,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
             pdfUrl={pdfUrl}
             building={building}
             errorDetail={compileError}
+            missingAssets={missingAssets}
           />
         </div>
       </section>
@@ -530,6 +637,8 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         sending={sending}
         streamingText={streamingText}
         phase={phase}
+        collapsed={chatCollapsed}
+        onToggleCollapsed={() => setChatCollapsed((c) => !c)}
       />
 
       <LaTeXPeekEditor

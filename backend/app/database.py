@@ -139,6 +139,16 @@ def ensure_database_schema() -> None:
                     text("CREATE INDEX IF NOT EXISTS ix_files_user_id ON files(user_id)"),
                 )
 
+        if "workspace_assets" in tables:
+            columns = {
+                column["name"]
+                for column in inspector.get_columns("workspace_assets")
+            }
+            if "text_excerpt" not in columns:
+                connection.execute(
+                    text("ALTER TABLE workspace_assets ADD COLUMN text_excerpt VARCHAR"),
+                )
+
         if "reading_sessions" in tables:
             columns = {
                 column["name"]

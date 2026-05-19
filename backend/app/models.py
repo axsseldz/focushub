@@ -152,6 +152,11 @@ class WorkspaceAsset(Base):
     file_name: Mapped[str] = mapped_column(String, nullable=False)
     file_url: Mapped[str] = mapped_column(String, nullable=False)
     mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Pre-extracted text content (e.g. from a PDF). Populated on upload
+    # so the chat can feed it back as context without re-downloading the
+    # file on every turn. ``None`` means either extraction failed or the
+    # asset is binary (image, video, etc.).
+    text_excerpt: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

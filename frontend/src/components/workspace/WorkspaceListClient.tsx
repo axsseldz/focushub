@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserButton } from "@clerk/nextjs";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ProjectCardCover } from "@/components/workspace/ProjectCardCover";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import type { WorkspaceProject } from "@/types/workspace";
 
@@ -19,6 +21,8 @@ export function WorkspaceListClient() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [projectToDelete, setProjectToDelete] =
+    useState<WorkspaceProject | null>(null);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -46,10 +50,6 @@ export function WorkspaceListClient() {
 
   const deleteProject = useCallback(
     async (project: WorkspaceProject) => {
-      const ok = confirm(
-        `¿Eliminar «${project.title}»? Esta acción no se puede deshacer.`,
-      );
-      if (!ok) return;
       setDeletingId(project.id);
       try {
         const res = await authedFetch(
@@ -95,6 +95,25 @@ export function WorkspaceListClient() {
 
   return (
     <div className="flex min-h-screen bg-white dark:bg-zinc-950">
+      <ConfirmDialog
+        open={projectToDelete !== null}
+        title="¿Eliminar este proyecto?"
+        description={
+          projectToDelete
+            ? `«${projectToDelete.title}» se eliminará permanentemente, junto con su historial de chat y sus recursos.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        onConfirm={() => {
+          if (projectToDelete) {
+            const target = projectToDelete;
+            setProjectToDelete(null);
+            void deleteProject(target);
+          }
+        }}
+        onCancel={() => setProjectToDelete(null)}
+      />
       <Sidebar />
       <main className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 flex h-14 items-center justify-end gap-2 border-b border-slate-200/70 bg-white/85 px-6 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/85 sm:px-10">
@@ -156,7 +175,7 @@ export function WorkspaceListClient() {
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onDelete={() => deleteProject(project)}
+                    onDelete={() => setProjectToDelete(project)}
                     isDeleting={deletingId === project.id}
                   />
                 ))}
@@ -189,14 +208,12 @@ function ProjectCard({
         href={`/workspace/${project.id}`}
         className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_44px_-22px_rgba(15,23,42,0.18)] dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:shadow-[0_18px_44px_-22px_rgba(0,0,0,0.6)]"
       >
-        {/* Paper-style preview strip */}
-        <div className="relative h-28 overflow-hidden border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white dark:border-zinc-900 dark:from-zinc-900 dark:to-zinc-950">
-          <div className="absolute inset-x-6 top-5 space-y-1.5 opacity-60">
-            <div className="h-2 w-1/2 rounded bg-slate-200 dark:bg-zinc-700" />
-            <div className="h-1.5 w-3/4 rounded bg-slate-200/80 dark:bg-zinc-800" />
-            <div className="h-1.5 w-2/3 rounded bg-slate-200/80 dark:bg-zinc-800" />
-            <div className="h-1.5 w-4/5 rounded bg-slate-200/80 dark:bg-zinc-800" />
-          </div>
+        {/* Cover art — each project gets one of a handful of animated
+            illustrations picked deterministically from its id so the
+            workspace list feels personalized. The ``LaTeX`` badge sits
+            on top of the art. */}
+        <div className="relative h-28 overflow-hidden border-b border-slate-100 dark:border-zinc-900">
+          <ProjectCardCover seed={project.id} />
           <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/90 dark:text-zinc-400">
             <DocumentIcon />
             LaTeX

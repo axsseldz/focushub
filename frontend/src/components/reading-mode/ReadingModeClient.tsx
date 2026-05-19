@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { Manrope } from "next/font/google";
 import { UserButton, useAuth } from "@clerk/nextjs";
@@ -468,27 +467,15 @@ type LibrarySearchProps = {
 function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
-  // SSR-safe: arranca como `true` en el server, se corrige en el
-  // cliente sin disparar setState dentro de un effect.
-  const isMac = useSyncExternalStore(
-    () => () => {},
-    () => /Mac|iPhone|iPad/.test(navigator.platform),
-    () => true,
-  );
 
-  // ⌘K / Ctrl+K enfoca el search desde cualquier parte de la library.
+  // ``/`` enfoca el search desde cualquier parte de la library.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const editing =
         tag === "input" || tag === "textarea" || target?.isContentEditable;
-      const cmdOrCtrl = event.metaKey || event.ctrlKey;
-      if (cmdOrCtrl && event.key.toLowerCase() === "k" && !editing) {
-        event.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      } else if (event.key === "/" && !editing) {
+      if (event.key === "/" && !editing) {
         event.preventDefault();
         inputRef.current?.focus();
       }
@@ -504,7 +491,7 @@ function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
 
   return (
     <div className="relative max-w-md">
-      {/* Search bar — animated focus state + ⌘K shortcut hint */}
+      {/* Search bar — animated focus state */}
       <div className="relative">
         <motion.div
           animate={{
@@ -557,12 +544,7 @@ function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
             >
               <CloseIcon />
             </motion.button>
-          ) : (
-            <kbd className="mr-2.5 hidden items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 sm:inline-flex">
-              {isMac ? "⌘" : "Ctrl"}
-              <span className="opacity-60">K</span>
-            </kbd>
-          )}
+          ) : null}
         </motion.div>
       </div>
     </div>
