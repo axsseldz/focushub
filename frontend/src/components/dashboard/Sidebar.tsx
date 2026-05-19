@@ -10,6 +10,11 @@ const sidebarItems = [
     icon: <LibraryIcon />,
   },
   {
+    label: "Workspace",
+    href: "/workspace",
+    icon: <WorkspaceIcon />,
+  },
+  {
     label: "Analítica",
     href: "/analitica",
     icon: <AnalyticsIcon />,
@@ -85,6 +90,20 @@ function LibraryIcon() {
     <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
       <path
         d="M5 5.5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 10 5.5v13A1.5 1.5 0 0 1 8.5 20h-2A1.5 1.5 0 0 1 5 18.5v-13ZM12 5.5A1.5 1.5 0 0 1 13.5 4h2A1.5 1.5 0 0 1 17 5.5v13A1.5 1.5 0 0 1 15.5 20h-2A1.5 1.5 0 0 1 12 18.5v-13ZM18.2 7.32l1.9-.5a1 1 0 0 1 1.22.71l2.9 10.86"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function WorkspaceIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M5 5.5A1.5 1.5 0 0 1 6.5 4h11A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5v-13ZM9 8.5h6M9 12h6M9 15.5h3.5"
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"

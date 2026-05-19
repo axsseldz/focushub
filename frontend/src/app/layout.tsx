@@ -8,7 +8,7 @@ import { ToasterMount } from "@/components/ToasterMount";
 
 export const metadata: Metadata = {
   title: "FocusHub",
-  description: "Entra en estado de focus. Lectura y escritura sin distracciones.",
+  description: "Tu workspace de productividad. Escribe LaTeX con IA, compila a PDF y guarda todo lo que lees en un solo lugar.",
 };
 
 // Runs before React hydrates so the `dark` class is already on <html>.

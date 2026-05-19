@@ -35,6 +35,9 @@ class Settings:
     voice_id_rous: str | None
     voice_id_diego: str | None
     audio_cache_dir: Path
+    openai_api_key: str | None
+    openai_model_plan: str
+    openai_model_execute: str
 
     def voice_id_for(self, key: str) -> str | None:
         """Resolve a logical voice key (``"rous"`` / ``"diego"``) to the
@@ -54,4 +57,16 @@ settings = Settings(
     voice_id_rous=os.getenv("ELEVENLABS_VOICE_ID_ROUS"),
     voice_id_diego=os.getenv("ELEVENLABS_VOICE_ID_DIEGO"),
     audio_cache_dir=_AUDIO_CACHE_DIR,
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    # gpt-4o-mini is ~3-4x faster than gpt-4o and quality is more than
+    # enough for LaTeX scaffolding + chat. The user can override per
+    # mode if a turn needs deeper reasoning.
+    openai_model_plan=os.getenv(
+        "OPENAI_MODEL_PLAN",
+        os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    ),
+    openai_model_execute=os.getenv(
+        "OPENAI_MODEL_EXECUTE",
+        os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    ),
 )

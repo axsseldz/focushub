@@ -128,19 +128,27 @@ export default function Home() {
               data-hero-item
               className="text-balance text-5xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-zinc-50 sm:text-6xl lg:text-7xl"
             >
-              Entra en estado de{" "}
+              Tu workspace de{" "}
               <span className="bg-[linear-gradient(135deg,#0f172a_0%,#2563eb_55%,#38bdf8_100%)] bg-clip-text text-transparent dark:bg-[linear-gradient(135deg,#3b82f6_0%,#60a5fa_55%,#93c5fd_100%)]">
-                focus
+                productividad
               </span>
               .
             </h1>
+
+            <p
+              data-hero-item
+              className="mx-auto mt-6 max-w-xl text-balance text-base text-slate-500 dark:text-zinc-400 sm:text-lg"
+            >
+              Escribe LaTeX con un copiloto de IA, compila a PDFs reales y
+              guarda todo lo que lees en un solo lugar — sin caos de pestañas.
+            </p>
 
             <div
               data-hero-item
               className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
             >
               <Show when="signed-out">
-                <SignUpButton mode="modal" fallbackRedirectUrl="/lectura">
+                <SignUpButton mode="modal" fallbackRedirectUrl="/workspace">
                   <button
                     type="button"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
@@ -149,7 +157,7 @@ export default function Home() {
                     <ArrowIcon />
                   </button>
                 </SignUpButton>
-                <SignInButton mode="modal" fallbackRedirectUrl="/lectura">
+                <SignInButton mode="modal" fallbackRedirectUrl="/workspace">
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/80 px-7 py-3 text-sm font-semibold text-slate-700 backdrop-blur transition-colors hover:border-slate-300 hover:text-slate-950 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-300 dark:hover:text-zinc-50"
@@ -160,10 +168,10 @@ export default function Home() {
               </Show>
               <Show when="signed-in">
                 <Link
-                  href="/lectura"
+                  href="/workspace"
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-7 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-50"
                 >
-                  Entrar a tu biblioteca
+                  Abrir tu workspace
                   <ArrowIcon />
                 </Link>
               </Show>
@@ -171,10 +179,6 @@ export default function Home() {
           </div>
 
           <LandingShowcase />
-
-          <p className="mx-auto mt-10 max-w-md text-center text-xs text-slate-400 dark:text-zinc-600">
-            Lectura disponible. Escritura próximamente.
-          </p>
         </section>
       </div>
     </main>

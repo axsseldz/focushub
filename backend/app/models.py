@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -92,6 +101,90 @@ class ReadingProgress(Base):
             "book_id",
             name="uq_reading_progress_user_book",
         ),
+    )
+
+
+class WorkspaceProject(Base):
+    """A user-owned LaTeX project edited inside the Workspace.
+
+    The whole document lives in ``latex_source`` as a single .tex blob. A
+    project may also have a chat history (``WorkspaceMessage``) and uploaded
+    assets (``WorkspaceAsset``) that the AI can reference by filename."""
+
+    __tablename__ = "workspace_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    latex_source: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    last_exported_file_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class WorkspaceAsset(Base):
+    """An image / document the user uploaded to a project. The AI receives
+    the list of filenames so it can drop ``\\includegraphics{logo.png}``
+    without first asking the user what's available."""
+
+    __tablename__ = "workspace_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workspace_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(String, nullable=False)
+    file_url: Mapped[str] = mapped_column(String, nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class WorkspaceMessage(Base):
+    """One turn of the project's chat history. ``role`` is ``user`` or
+    ``assistant``; ``mode`` is the active switch when the message was sent
+    (``plan`` / ``execute``) so the timeline keeps that context visible."""
+
+    __tablename__ = "workspace_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workspace_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_workspace_messages_project_created", "project_id", "created_at"),
     )
 
 

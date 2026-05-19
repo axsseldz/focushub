@@ -1,7 +1,8 @@
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -11,6 +12,24 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False},
 )
+
+
+# SQLite ships with foreign key enforcement OFF by default — so even
+# columns declared with ``ON DELETE CASCADE`` (e.g. ``WorkspaceAsset
+# .project_id``) get silently ignored on delete. We turn it on for
+# every connection the engine hands out so deleting a project does the
+# right thing and we never accumulate orphaned messages/assets again.
+@event.listens_for(Engine, "connect")
+def _sqlite_enable_foreign_keys(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
+    # Bail for non-SQLite dialects (the listener is global but the
+    # PRAGMA is a no-op everywhere else).
+    if not hasattr(dbapi_connection, "cursor"):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys = ON")
+    finally:
+        cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -49,6 +68,25 @@ def ensure_database_schema() -> None:
     with engine.begin() as connection:
         inspector = inspect(connection)
         tables = set(inspector.get_table_names())
+
+        # One-time cleanup: prior versions of the app didn't enable
+        # SQLite FK enforcement, so deleting a workspace project left
+        # behind orphan rows. Sweep them at startup so the workspace
+        # never serves messages or assets whose parent project is gone.
+        if "workspace_messages" in tables and "workspace_projects" in tables:
+            connection.execute(
+                text(
+                    "DELETE FROM workspace_messages "
+                    "WHERE project_id NOT IN (SELECT id FROM workspace_projects)",
+                ),
+            )
+        if "workspace_assets" in tables and "workspace_projects" in tables:
+            connection.execute(
+                text(
+                    "DELETE FROM workspace_assets "
+                    "WHERE project_id NOT IN (SELECT id FROM workspace_projects)",
+                ),
+            )
 
         if "files" in tables:
             columns = {column["name"] for column in inspector.get_columns("files")}

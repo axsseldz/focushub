@@ -14,7 +14,6 @@ import { Manrope } from "next/font/google";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { BooksLibrary } from "@/components/reading-mode/BooksLibrary";
-import { BookOpenDialog } from "@/components/reading-mode/BookOpenDialog";
 import { PdfReader } from "@/components/reading-mode/PdfReader";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { renderPdfThumbnail } from "@/lib/pdf";
@@ -83,9 +82,6 @@ export function ReadingModeClient() {
   const [renamingBookId, setRenamingBookId] = useState<string | null>(null);
   const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  // Libro que el usuario clickeó pero aún no decidió en qué modo
-  // abrirlo. Mientras este valor exista, se muestra el BookOpenDialog.
-  const [pendingBook, setPendingBook] = useState<Book | null>(null);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,10 +145,10 @@ export function ReadingModeClient() {
       markBookOpened(userId, savedBook.id);
       setBooks((current) => sortBooksByLastOpened([savedBook, ...current], userId));
       setSelectedBook(savedBook);
-      toast.success("Libro agregado a tu biblioteca.");
+      toast.success("Archivo agregado a tu biblioteca.");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Ocurrió un error al subir el libro.",
+        error instanceof Error ? error.message : "Ocurrió un error al subir el archivo.",
       );
     } finally {
       setIsUploading(false);
@@ -194,13 +190,13 @@ export function ReadingModeClient() {
       const response = await authedFetch(`${API_BASE_URL}/files/${book.id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("No se pudo eliminar el libro.");
+      if (!response.ok) throw new Error("No se pudo eliminar el archivo.");
       setBooks((current) => current.filter((b) => b.id !== book.id));
       if (selectedBook?.id === book.id) setSelectedBook(null);
-      toast.success("Libro eliminado.");
+      toast.success("Archivo eliminado.");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Ocurrió un error al eliminar el libro.",
+        error instanceof Error ? error.message : "Ocurrió un error al eliminar el archivo.",
       );
     } finally {
       setDeletingBookId(null);
@@ -231,8 +227,8 @@ export function ReadingModeClient() {
       >
         <ConfirmDialog
           open={bookToDelete !== null}
-          title="¿Eliminar este libro?"
-          description="Esta acción no se puede deshacer. El libro será eliminado permanentemente de tu biblioteca."
+          title="¿Eliminar este archivo?"
+          description="Esta acción no se puede deshacer. El archivo será eliminado permanentemente de tu biblioteca."
           confirmLabel="Eliminar"
           cancelLabel="Cancelar"
           onConfirm={() => {
@@ -271,8 +267,8 @@ export function ReadingModeClient() {
     >
       <ConfirmDialog
         open={bookToDelete !== null}
-        title="¿Eliminar este libro?"
-        description="Esta acción no se puede deshacer. El libro será eliminado permanentemente de tu biblioteca."
+        title="¿Eliminar este archivo?"
+        description="Esta acción no se puede deshacer. El archivo será eliminado permanentemente de tu biblioteca."
         confirmLabel="Eliminar"
         cancelLabel="Cancelar"
         onConfirm={() => {
@@ -329,7 +325,11 @@ export function ReadingModeClient() {
                 renamingBookId={renamingBookId}
                 isLoading={isLoadingBooks}
                 onDeleteBook={setBookToDelete}
-                onOpenBook={(book) => setPendingBook(book)}
+                onOpenBook={(book) => {
+                  markBookOpened(userId, book.id);
+                  setBooks((current) => sortBooksByLastOpened(current, userId));
+                  setSelectedBook(book);
+                }}
                 onRenameBook={handleRenameBook}
                 onClearSearch={() => setSearchQuery("")}
                 uploadcareKey={process.env.NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY ?? ""}
@@ -337,17 +337,6 @@ export function ReadingModeClient() {
                 onUploadStart={() => setIsUploading(true)}
                 onUploadFailed={() => setIsUploading(false)}
                 onUploadSuccess={handleUpload}
-              />
-
-              <BookOpenDialog
-                book={pendingBook}
-                onClose={() => setPendingBook(null)}
-                onOpenReading={(book) => {
-                  markBookOpened(userId, book.id);
-                  setBooks((current) => sortBooksByLastOpened(current, userId));
-                  setPendingBook(null);
-                  setSelectedBook(book);
-                }}
               />
             </div>
           </div>
@@ -398,13 +387,13 @@ function HeroStats({
   if (stats.total === 0) {
     return (
       <p className="mt-3 text-[14px] text-slate-500 dark:text-zinc-400">
-        Tu primer libro está a un clic de aquí.
+        Sube tu primer PDF para empezar.
       </p>
     );
   }
   return (
     <div className="mt-3 flex items-center gap-2.5 text-[13.5px] text-slate-500 dark:text-zinc-400">
-      <Stat value={stats.total} label={stats.total === 1 ? "libro" : "libros"} />
+      <Stat value={stats.total} label={stats.total === 1 ? "archivo" : "archivos"} />
       <Dot />
       <Stat
         value={stats.inProgress}
@@ -552,7 +541,7 @@ function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             placeholder="Buscar en tu biblioteca…"
-            aria-label="Buscar libros"
+            aria-label="Buscar archivos"
             className="h-full flex-1 bg-transparent px-2.5 text-[13.5px] text-slate-900 placeholder:text-slate-400 outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500"
           />
           {query ? (

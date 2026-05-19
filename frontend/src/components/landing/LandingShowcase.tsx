@@ -110,7 +110,7 @@ export function LandingShowcase() {
 const SCENES: Scene[] = [
   {
     id: "reading",
-    caption: "Lectura sin distracciones.",
+    caption: "Escribe LaTeX con IA y compila a PDF real.",
     render: (k) => <SceneReading key={k} />,
   },
   {
