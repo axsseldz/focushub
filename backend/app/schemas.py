@@ -56,3 +56,17 @@ class ReadingSessionResponse(BaseModel):
     duration_seconds: int
     pages_read: int | None
     created_at: datetime
+
+
+class ReadingProgressUpsert(BaseModel):
+    last_page: int = Field(ge=1, le=100_000)
+    last_paragraph_index: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class ReadingProgressResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    book_id: int
+    last_page: int
+    last_paragraph_index: int | None
+    updated_at: datetime

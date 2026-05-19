@@ -16,6 +16,11 @@ import { useReadingSessionTracker } from "@/lib/reading-tracker";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { extractPageNarration, type PageNarration } from "@/lib/pdf";
 import { useAudioNarrator, type NarratorVoice } from "@/lib/audio-narrator";
+import {
+  fetchReadingProgress,
+  useReadingProgressAutosave,
+} from "@/lib/reading-progress";
+import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "@/lib/theme";
 
 // ---------------------------------------------------------------------------
@@ -93,18 +98,37 @@ type PdfDocProxy = { numPages: number; getPage: (n: number) => Promise<unknown> 
 
 export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps) {
   const authedFetch = useAuthedFetch();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const pagesContainerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PdfDocProxy | null>(null);
 
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [pageRatio, setPageRatio] = useState<number | null>(null);
   const [numPages, setNumPages] = useState(0);
+  // Arranca con la última página guardada localmente — cache offline-first.
+  // Apenas llega el fetch del backend (más arriba en useEffect) reconciliamos
+  // si el valor remoto es más reciente.
   const [currentPage, setCurrentPage] = useState(() => readSavedPage(book.id));
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
   const [gestureEnabled, setGestureEnabled] = useState(false);
   const [tone, setTone] = useState<ReaderTone>("light");
   const [voice, setVoice] = useState<NarratorVoice>("rous");
   const [pageNarration, setPageNarration] = useState<PageNarration | null>(null);
+  // "Resume paragraph" — índice del párrafo donde quedó el usuario, traído
+  // del backend al montar. Se usa para:
+  //   1. Pre-resaltar el párrafo (sin reproducir audio) cuando los rects
+  //      de la página guardada terminan de cargar.
+  //   2. Auto-scroll suave a ese párrafo cuando se vuelve visible.
+  //   3. Indicarle a ``play()`` desde qué índice arrancar al apretar Play.
+  // Se limpia cuando: el usuario cambia de página, arranca la narración,
+  // o el narrador ya emite su propio ``activeParagraph`` (autoritativo).
+  const [pendingResumeParagraph, setPendingResumeParagraph] = useState<
+    number | null
+  >(null);
+  // Página a la que pertenece ``pendingResumeParagraph``. Sirve para
+  // descartar el resume si el usuario navega a otra página antes de
+  // reanudar — el párrafo guardado sólo tiene sentido en su página.
+  const [resumePage, setResumePage] = useState<number | null>(null);
   // Modo "narración continua": cuando el usuario aprieta Iniciar
   // narración encendemos este flag. Se mantiene encendido aunque
   // cambien la página (manual, teclado o gestos) o termine la
@@ -122,6 +146,33 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
     setTone(readSavedTone());
     setVoice(readSavedVoice());
   }, []);
+
+  // Fetch del bookmark remoto al montar. Si trae un valor más nuevo
+  // que el cache local (o el cache local no existía) reconciliamos
+  // página y guardamos el párrafo pendiente para el resume.
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn) return;
+    let cancelled = false;
+    void fetchReadingProgress(authedFetch, book.id)
+      .then((progress) => {
+        if (cancelled || !progress) return;
+        // Confiamos en el backend como fuente de verdad — un mismo
+        // usuario puede estar leyendo en otra máquina.
+        setCurrentPage((prev) =>
+          progress.last_page > 0 ? progress.last_page : prev,
+        );
+        if (progress.last_paragraph_index !== null) {
+          setPendingResumeParagraph(progress.last_paragraph_index);
+          setResumePage(progress.last_page);
+        }
+      })
+      .catch(() => {
+        // Sin progreso remoto: nos quedamos con el cache local.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authedFetch, authLoaded, isSignedIn, book.id]);
   useEffect(() => {
     try {
       window.localStorage.setItem(TONE_STORAGE_KEY, tone);
@@ -381,20 +432,114 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
     return renderedWidth / pageNarration.pageSize.width;
   }, [pageNarration, renderedWidth]);
 
+  // Índice efectivo del párrafo a resaltar:
+  //   - mientras el narrador está activo, su ``activeParagraph`` manda;
+  //   - antes de apretar Play, mostramos el ``pendingResumeParagraph``
+  //     SOLO si seguimos en la página donde quedó el usuario.
+  const highlightedParagraph = useMemo(() => {
+    if (narrator.activeParagraph !== null) return narrator.activeParagraph;
+    if (pendingResumeParagraph !== null && resumePage === currentPage) {
+      return pendingResumeParagraph;
+    }
+    return null;
+  }, [
+    narrator.activeParagraph,
+    pendingResumeParagraph,
+    resumePage,
+    currentPage,
+  ]);
+
   const activeRects = useMemo(() => {
-    if (!pageNarration) return [];
-    if (narrator.activeParagraph === null) return [];
-    return pageNarration.rects[narrator.activeParagraph] ?? [];
-  }, [pageNarration, narrator.activeParagraph]);
+    if (!pageNarration || highlightedParagraph === null) return [];
+    return pageNarration.rects[highlightedParagraph] ?? [];
+  }, [pageNarration, highlightedParagraph]);
+
+  // Auto-scroll suave al párrafo de resume cuando finalmente tenemos
+  // su rect y el contenedor montado. Sólo lo hacemos una vez por
+  // resume (limpiamos ``resumePage`` cuando ya queda visible) para no
+  // pelearle al usuario si scrollea manualmente.
+  const didScrollResumeRef = useRef(false);
+  useEffect(() => {
+    if (didScrollResumeRef.current) return;
+    if (pendingResumeParagraph === null) return;
+    if (resumePage !== currentPage) return;
+    if (!pageNarration) return;
+    const rects = pageNarration.rects[pendingResumeParagraph];
+    if (!rects || rects.length === 0) return;
+    const container = pagesContainerRef.current;
+    if (!container) return;
+
+    // Convertimos el rect (en coords del PDF a escala 1) a pixeles del
+    // viewport renderizado y luego al espacio del contenedor.
+    const firstRect = rects[0];
+    const targetY = firstRect.y * renderScale;
+    // Buscamos el <div> que envuelve la página renderizada (el primer
+    // hijo absolutely-positioned dentro del flex). Usamos ``getBoundingClientRect``
+    // para sumar el offset del page wrapper respecto al scroller.
+    const pageWrapper = container.querySelector(
+      "[data-pdf-page-wrapper]",
+    ) as HTMLElement | null;
+    if (!pageWrapper) return;
+
+    const pageTopInContainer =
+      pageWrapper.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+    // Centramos el párrafo dejándolo a ~25% del viewport visible,
+    // así el lector ve contexto arriba y abajo.
+    const scrollTo = Math.max(
+      0,
+      pageTopInContainer + targetY - container.clientHeight * 0.25,
+    );
+    container.scrollTo({ top: scrollTo, behavior: "smooth" });
+    didScrollResumeRef.current = true;
+  }, [
+    pendingResumeParagraph,
+    resumePage,
+    currentPage,
+    pageNarration,
+    renderScale,
+  ]);
+
+  // Si el usuario navega a otra página, el resume marcador del que
+  // veníamos deja de ser relevante.
+  useEffect(() => {
+    if (resumePage !== null && resumePage !== currentPage) {
+      setPendingResumeParagraph(null);
+      setResumePage(null);
+      didScrollResumeRef.current = false;
+    }
+  }, [currentPage, resumePage]);
 
   const handleStartNarration = useCallback(() => {
     setAutoPlayNarration(true);
-    void narrator.play(0);
-  }, [narrator]);
+    // Si hay un párrafo pendiente para la página actual, arrancamos
+    // desde ahí. Una vez que el narrador toma control, su propio
+    // ``activeParagraph`` manda y limpiamos el resume.
+    const startIndex =
+      pendingResumeParagraph !== null && resumePage === currentPage
+        ? pendingResumeParagraph
+        : 0;
+    setPendingResumeParagraph(null);
+    setResumePage(null);
+    void narrator.play(startIndex);
+  }, [narrator, pendingResumeParagraph, resumePage, currentPage]);
   const handleStopNarration = useCallback(() => {
     setAutoPlayNarration(false);
     narrator.stop();
   }, [narrator]);
+
+  // Autosave debounced: cada vez que cambia página o párrafo activo,
+  // sincronizamos al backend. El índice persistido es el efectivo
+  // (narrador o resume); si ninguno está activo guardamos ``null`` —
+  // así el siguiente resume sólo destacará si realmente hubo
+  // narración previa.
+  useReadingProgressAutosave({
+    enabled: authLoaded && Boolean(isSignedIn),
+    bookId: book.id,
+    lastPage: currentPage,
+    lastParagraphIndex: highlightedParagraph,
+  });
 
   // Auto-reanudación al aterrizar en una página nueva mientras el
   // modo continuo sigue prendido. Cubre los tres caminos por los
@@ -584,6 +729,7 @@ export function PdfReader({ book, onBack, onPageCountResolved }: PdfReaderProps)
                     className="flex justify-center"
                   >
                     <div
+                      data-pdf-page-wrapper
                       className={`relative overflow-hidden rounded-[1.75rem] border transition-[background-color] duration-500 ${
                         focusEnabled
                           ? "border-white/5 bg-zinc-900 shadow-none"

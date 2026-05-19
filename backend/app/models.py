@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, func
+from sqlalchemy import DateTime, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -56,6 +56,42 @@ class ReadingSession(Base):
 
     __table_args__ = (
         Index("ix_reading_sessions_started_at", "started_at"),
+    )
+
+
+class ReadingProgress(Base):
+    """Per-user "auto-bookmark" para un libro: la última página leída y,
+    cuando hay narración, el índice del último párrafo activo dentro de
+    esa página. Un row por ``(user_id, book_id)`` — al actualizarse se
+    sobreescribe en lugar de acumular historial.
+
+    El frontend hace upsert con debounce a medida que el usuario navega
+    o el narrador avanza de párrafo, así que el row representa siempre
+    el "último punto conocido" donde quedó la lectura."""
+
+    __tablename__ = "reading_progress"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    book_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    last_page: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_paragraph_index: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "book_id",
+            name="uq_reading_progress_user_book",
+        ),
     )
 
 
