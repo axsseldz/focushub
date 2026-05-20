@@ -14,11 +14,11 @@ import {
   YAxis,
 } from "recharts";
 import { useTheme } from "@/lib/theme";
-import type { DailyBucket } from "@/lib/analytics";
+import type { DualDailyBucket } from "@/lib/analytics";
 
 type MinutesBarChartProps = {
-  buckets7: DailyBucket[];
-  buckets30: DailyBucket[];
+  buckets7: DualDailyBucket[];
+  buckets30: DualDailyBucket[];
 };
 
 const cardVariants = {
@@ -47,7 +47,12 @@ function formatTooltipLabel(iso: string): string {
 type ChartDatum = {
   iso: string;
   label: string;
-  minutes: number;
+  /** Reading minutes — bottom segment of each stacked bar. */
+  reading: number;
+  /** Workspace minutes — top segment, stacked above reading. */
+  workspace: number;
+  /** Sum of the two — used for tooltip totals and the "peak" footer. */
+  total: number;
 };
 
 export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
@@ -56,28 +61,47 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
   const { theme } = useTheme();
 
   const buckets = range === "7" ? buckets7 : buckets30;
-  const data: ChartDatum[] = buckets.map((b) => ({
-    iso: b.iso,
-    label: formatTick(b.date, range),
-    minutes: Math.round(b.seconds / 60),
-  }));
+  const data: ChartDatum[] = buckets.map((b) => {
+    const reading = Math.round(b.readingSeconds / 60);
+    const workspace = Math.round(b.workspaceSeconds / 60);
+    return {
+      iso: b.iso,
+      label: formatTick(b.date, range),
+      reading,
+      workspace,
+      total: reading + workspace,
+    };
+  });
 
-  const max = Math.max(1, ...data.map((d) => d.minutes));
+  const max = Math.max(1, ...data.map((d) => d.total));
   const isDark = theme === "dark";
 
   return (
     <motion.section
       variants={cardVariants}
-      className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
+      className="rounded-3xl border border-slate-200/80 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
     >
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-zinc-500">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-zinc-600">
             Minutos por día
           </p>
-          <p className="mt-1 text-xs text-slate-400 dark:text-zinc-600">
-            Tiempo de lectura activa
-          </p>
+          <div className="hidden items-center gap-3 text-[11px] font-medium text-slate-600 dark:text-zinc-400 sm:flex">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-700 dark:bg-zinc-300"
+              />
+              Lectura
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2.5 w-2.5 rounded-sm bg-indigo-500 dark:bg-indigo-400"
+              />
+              Workspace
+            </span>
+          </div>
         </div>
 
         <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-800">
@@ -115,17 +139,21 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
             onMouseLeave={() => setHoveredIso(null)}
           >
             <defs>
-              <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={isDark ? "#fafafa" : "#0f172a"} stopOpacity={0.95} />
-                <stop offset="100%" stopColor={isDark ? "#a1a1aa" : "#334155"} stopOpacity={0.85} />
+              <linearGradient id="barReading" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isDark ? "#e4e4e7" : "#334155"} stopOpacity={0.95} />
+                <stop offset="100%" stopColor={isDark ? "#a1a1aa" : "#64748b"} stopOpacity={0.85} />
               </linearGradient>
-              <linearGradient id="barFillHover" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={isDark ? "#a7f3d0" : "#10b981"} stopOpacity={1} />
-                <stop offset="100%" stopColor={isDark ? "#34d399" : "#059669"} stopOpacity={1} />
+              <linearGradient id="barWorkspace" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isDark ? "#818cf8" : "#6366f1"} stopOpacity={0.95} />
+                <stop offset="100%" stopColor={isDark ? "#6366f1" : "#4f46e5"} stopOpacity={0.85} />
               </linearGradient>
-              <linearGradient id="barFillEmpty" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={isDark ? "#3f3f46" : "#e2e8f0"} stopOpacity={0.7} />
-                <stop offset="100%" stopColor={isDark ? "#27272a" : "#f1f5f9"} stopOpacity={0.7} />
+              <linearGradient id="barReadingHover" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isDark ? "#fafafa" : "#1e293b"} stopOpacity={1} />
+                <stop offset="100%" stopColor={isDark ? "#d4d4d8" : "#475569"} stopOpacity={1} />
+              </linearGradient>
+              <linearGradient id="barWorkspaceHover" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isDark ? "#a5b4fc" : "#818cf8"} stopOpacity={1} />
+                <stop offset="100%" stopColor={isDark ? "#818cf8" : "#6366f1"} stopOpacity={1} />
               </linearGradient>
             </defs>
             <CartesianGrid
@@ -161,18 +189,32 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
               animationDuration={150}
             />
             <Bar
-              dataKey="minutes"
-              radius={[8, 8, 4, 4]}
+              dataKey="reading"
+              stackId="time"
+              radius={[0, 0, 4, 4]}
               animationDuration={900}
               animationEasing="ease-out"
             >
               {data.map((d) => {
                 const isHovered = hoveredIso === d.iso;
-                const fill = d.minutes === 0
-                  ? "url(#barFillEmpty)"
-                  : isHovered
-                    ? "url(#barFillHover)"
-                    : "url(#barFill)";
+                const fill = isHovered
+                  ? "url(#barReadingHover)"
+                  : "url(#barReading)";
+                return <Cell key={d.iso} fill={fill} />;
+              })}
+            </Bar>
+            <Bar
+              dataKey="workspace"
+              stackId="time"
+              radius={[8, 8, 0, 0]}
+              animationDuration={900}
+              animationEasing="ease-out"
+            >
+              {data.map((d) => {
+                const isHovered = hoveredIso === d.iso;
+                const fill = isHovered
+                  ? "url(#barWorkspaceHover)"
+                  : "url(#barWorkspace)";
                 return <Cell key={d.iso} fill={fill} />;
               })}
             </Bar>
@@ -185,7 +227,7 @@ export function MinutesBarChart({ buckets7, buckets30 }: MinutesBarChartProps) {
         <span>
           Promedio:{" "}
           {Math.round(
-            data.reduce((acc, d) => acc + d.minutes, 0) / Math.max(data.length, 1),
+            data.reduce((acc, d) => acc + d.total, 0) / Math.max(data.length, 1),
           )}{" "}
           min/día
         </span>
@@ -202,12 +244,36 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
       <p className="font-semibold text-slate-700 dark:text-zinc-200">
         {formatTooltipLabel(datum.iso)}
       </p>
-      <p className="mt-0.5 text-slate-500 dark:text-zinc-400">
+      <p className="mt-1 text-slate-500 dark:text-zinc-400">
         <span className="font-semibold text-slate-900 dark:text-zinc-100">
-          {datum.minutes}
+          {datum.total}
         </span>{" "}
-        min de lectura
+        min en total
       </p>
+      <div className="mt-1 space-y-0.5">
+        <p className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 rounded-sm bg-slate-700 dark:bg-zinc-300"
+          />
+          Lectura{" "}
+          <span className="font-semibold text-slate-900 dark:text-zinc-100">
+            {datum.reading}
+          </span>{" "}
+          min
+        </p>
+        <p className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 rounded-sm bg-indigo-500 dark:bg-indigo-400"
+          />
+          Workspace{" "}
+          <span className="font-semibold text-slate-900 dark:text-zinc-100">
+            {datum.workspace}
+          </span>{" "}
+          min
+        </p>
+      </div>
     </div>
   );
 }

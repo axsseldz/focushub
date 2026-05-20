@@ -157,3 +157,27 @@ class WorkspaceSyncResponse(BaseModel):
     file_id: int
     file_url: str
     file_name: str
+
+
+class WorkspaceSessionCreate(BaseModel):
+    project_id: int | None = Field(default=None, ge=1)
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: int = Field(ge=1, le=24 * 60 * 60)
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "WorkspaceSessionCreate":
+        if self.ended_at < self.started_at:
+            raise ValueError("ended_at must be greater than or equal to started_at")
+        return self
+
+
+class WorkspaceSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int | None
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: int
+    created_at: datetime

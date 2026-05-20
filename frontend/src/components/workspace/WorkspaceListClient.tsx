@@ -135,7 +135,7 @@ export function WorkspaceListClient() {
 
           {/* Action bar */}
           <section className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex h-10 w-full max-w-sm items-center overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-slate-400 focus-within:shadow-[0_0_0_4px_rgba(15,23,42,0.06)] dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="relative flex h-10 w-full max-w-sm items-center overflow-hidden rounded-lg border border-transparent bg-white transition-[border-color,box-shadow] duration-200 focus-within:border-slate-900 focus-within:shadow-[0_0_0_4px_rgba(15,23,42,0.07)] dark:bg-zinc-900">
               <span className="flex h-full items-center pl-3 text-slate-400 dark:text-zinc-500">
                 <SearchIcon />
               </span>

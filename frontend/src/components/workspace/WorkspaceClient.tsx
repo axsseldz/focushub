@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import { API_BASE_URL, useAuthedFetch } from "@/lib/api";
 import { PdfCanvas } from "@/lib/latex-render";
 import { readSSE } from "@/lib/sse";
+import { useWorkspaceSessionTracker } from "@/lib/workspace-tracker";
 import { WorkspaceAssets } from "@/components/workspace/WorkspaceAssets";
 import { WorkspaceChat } from "@/components/workspace/WorkspaceChat";
 import { WorkspaceSettingsMenu } from "@/components/workspace/WorkspaceSettingsMenu";
+import { WorkspaceTip } from "@/components/workspace/WorkspaceTip";
 import { LaTeXPeekEditor } from "@/components/workspace/LaTeXPeekEditor";
 import type {
   SyncResponse,
@@ -74,6 +76,16 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const router = useRouter();
 
   const [project, setProject] = useState<WorkspaceProjectDetail | null>(null);
+
+  // Mount the workspace tracker once the project is loaded so a slow
+  // network fetch doesn't get counted as "writing". The hook itself
+  // gates on visibility + recent activity; we just pipe authoring
+  // actions (chat sends, saves, compiles, asset uploads) through the
+  // notifier so the 3-minute proof window stays fresh while the user
+  // is being productive.
+  const { notifyWorkspaceActivity } = useWorkspaceSessionTracker(
+    project ? String(project.id) : null,
+  );
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<WorkspaceMode>("plan");
   const [sending, setSending] = useState(false);
@@ -117,6 +129,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
 
   const compilePdf = useCallback(async () => {
     if (!project) return;
+    notifyWorkspaceActivity();
     setCompiling(true);
     setCompileError(null);
     try {
@@ -148,7 +161,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
     } finally {
       setCompiling(false);
     }
-  }, [authedFetch, project]);
+  }, [authedFetch, notifyWorkspaceActivity, project]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -169,6 +182,11 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         if (!cancelled) {
           setProject(data);
           setTitleDraft(data.title);
+          // Freshly created (empty) projects open with the chat and
+          // assets panels minimized so the canvas is the focus.
+          // Projects that already have history/assets stay expanded.
+          setChatCollapsed(data.messages.length === 0);
+          setAssetsCollapsed(data.assets.length === 0);
         }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
@@ -194,6 +212,8 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (!project) return;
+
+      notifyWorkspaceActivity();
 
       // Cancel any in-flight stream before starting a new one so we
       // don't end up with two assistant turns racing for the same chat.
@@ -311,7 +331,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         }
       }
     },
-    [authedFetch, compilePdf, mode, project],
+    [authedFetch, compilePdf, mode, notifyWorkspaceActivity, project],
   );
 
   const handleCancel = useCallback(() => {
@@ -321,6 +341,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
   const handleSaveSource = useCallback(
     async (next: string) => {
       if (!project) return;
+      notifyWorkspaceActivity();
       try {
         const res = await authedFetch(
           `${API_BASE_URL}/workspace/projects/${project.id}`,
@@ -341,12 +362,13 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         toast.error(err instanceof Error ? err.message : String(err));
       }
     },
-    [authedFetch, compilePdf, project],
+    [authedFetch, compilePdf, notifyWorkspaceActivity, project],
   );
 
   const handleUploadAssets = useCallback(
     async (entries: UploadedEntry[]) => {
       if (!project) return;
+      notifyWorkspaceActivity();
       for (const entry of entries) {
         try {
           const res = await authedFetch(
@@ -371,12 +393,13 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         }
       }
     },
-    [authedFetch, project],
+    [authedFetch, notifyWorkspaceActivity, project],
   );
 
   const handleDeleteAsset = useCallback(
     async (assetId: number) => {
       if (!project) return;
+      notifyWorkspaceActivity();
       try {
         const res = await authedFetch(
           `${API_BASE_URL}/workspace/projects/${project.id}/assets/${assetId}`,
@@ -395,7 +418,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
         toast.error(err instanceof Error ? err.message : String(err));
       }
     },
-    [authedFetch, project],
+    [authedFetch, notifyWorkspaceActivity, project],
   );
 
   const handleSync = useCallback(async () => {
@@ -609,6 +632,7 @@ export function WorkspaceClient({ projectId }: { projectId: string }) {
               )}
               <span>{compiling ? "Compilando" : "Compilar"}</span>
             </button>
+            <WorkspaceTip />
             <WorkspaceSettingsMenu
               onShowCode={() => setPeekOpen(true)}
               onSyncToLibrary={handleSync}

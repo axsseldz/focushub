@@ -495,17 +495,16 @@ function LibrarySearch({ query, onQueryChange }: LibrarySearchProps) {
       <div className="relative">
         <motion.div
           animate={{
-            borderColor: isFocused
-              ? "rgb(15, 23, 42)"
-              : query
-                ? "rgb(203, 213, 225)"
-                : "rgb(226, 232, 240)",
+            // Only show the border highlight while the search is actually
+            // in use (focused). Idle — including with a query present — has
+            // a transparent border so it doesn't read as "activated".
+            borderColor: isFocused ? "rgb(15, 23, 42)" : "rgba(0, 0, 0, 0)",
             boxShadow: isFocused
               ? "0 0 0 4px rgba(15, 23, 42, 0.07)"
               : "0 0 0 0px rgba(15, 23, 42, 0)",
           }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          className="relative flex h-10 items-center overflow-hidden rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-900"
+          className="relative flex h-10 items-center overflow-hidden rounded-lg border border-transparent bg-white dark:bg-zinc-900"
         >
           <motion.span
             aria-hidden="true"

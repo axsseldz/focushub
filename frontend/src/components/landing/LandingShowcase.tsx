@@ -1,31 +1,24 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Lock, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import confetti from "canvas-confetti";
+import { BookOpen, Lock, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 /**
- * Auto-cycling visual demo for the landing page. Three scenes that
- * showcase the actual product (focused reading, precise time tracking,
- * unlockable achievements) — no marketing copy required.
- *
- * Mirrors the TrackingExplainer storyboard pattern: status caption,
- * play/pause control, dot navigation.
+ * Central landing animation: an auto-cycling visual recap of the whole
+ * product experience. Four scenes narrate the loop the app is built
+ * around — focused reading, authoring LaTeX, the gated active-time
+ * tracker, and unlockable achievements (with a confetti burst). No
+ * marketing copy required beyond the one-line caption.
  */
 
-const SCENE_DURATION_MS = 4500;
-
-type Scene = {
-  id: string;
-  caption: string;
-  render: (key: number) => React.ReactNode;
-};
+const SCENE_DURATION_MS = 4200;
 
 export function LandingShowcase() {
   const [index, setIndex] = useState(0);
   const [cycle, setCycle] = useState(0);
 
-  // Auto-advance through the scenes
   useEffect(() => {
     const id = window.setInterval(() => {
       setIndex((i) => {
@@ -38,19 +31,18 @@ export function LandingShowcase() {
   }, []);
 
   const scene = SCENES[index];
-  // The `cycle` counter forces a remount when the playhead loops back
-  // to the same scene so child timers (counters, badge unlocks) restart.
+  // The cycle counter forces a remount when the playhead loops back to
+  // the same scene so child timers (counter, badge unlocks) restart.
   const sceneKey = index * 100 + cycle;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.7, delay: 0.4, ease: [0.22, 0.61, 0.36, 1] }}
+      transition={{ duration: 0.7, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="mx-auto mt-14 w-full max-w-2xl"
     >
       <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 shadow-[0_30px_70px_rgba(15,23,42,0.08)] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/70">
-        {/* Stage */}
         <div className="relative h-72 sm:h-80">
           <AnimatePresence mode="wait">
             <motion.div
@@ -66,7 +58,6 @@ export function LandingShowcase() {
           </AnimatePresence>
         </div>
 
-        {/* Footer with caption + controls */}
         <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-white/60 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900/60">
           <div className="min-w-0 flex-1">
             <AnimatePresence mode="wait">
@@ -83,13 +74,12 @@ export function LandingShowcase() {
             </AnimatePresence>
           </div>
 
-          {/* Dot navigation — purely an indicator now, no interactive controls */}
           <div className="flex items-center gap-1.5">
             {SCENES.map((_, i) => (
               <span
                 key={i}
                 aria-hidden="true"
-                className={`h-1 rounded-full transition-all ${
+                className={`h-1 rounded-full transition-all duration-300 ${
                   i === index
                     ? "w-5 bg-slate-900 dark:bg-zinc-100"
                     : "w-1 bg-slate-300 dark:bg-zinc-700"
@@ -104,19 +94,30 @@ export function LandingShowcase() {
 }
 
 // ---------------------------------------------------------------------------
-// Scenes
+// Scene registry
 // ---------------------------------------------------------------------------
+
+type Scene = {
+  id: string;
+  caption: string;
+  render: (key: number) => React.ReactNode;
+};
 
 const SCENES: Scene[] = [
   {
     id: "reading",
-    caption: "Escribe LaTeX con IA y compila a PDF real.",
+    caption: "Todo lo que lees, en foco.",
     render: (k) => <SceneReading key={k} />,
   },
   {
-    id: "timer",
+    id: "writing",
+    caption: "Escribe LaTeX con IA y compílalo a PDF.",
+    render: (k) => <SceneWriting key={k} />,
+  },
+  {
+    id: "tracking",
     caption: "Tiempo activo, no tiempo en pantalla.",
-    render: (k) => <SceneTimer key={k} />,
+    render: (k) => <SceneTracking key={k} />,
   },
   {
     id: "achievements",
@@ -125,47 +126,45 @@ const SCENES: Scene[] = [
   },
 ];
 
-// --- Scene 1: distractions fly away from a clean reading surface ----------
+// ---------------------------------------------------------------------------
+// Scene 1 — reading: book with text lines drawing in, distractions drift away
+// ---------------------------------------------------------------------------
 
 function SceneReading() {
   const distractions = [
-    { icon: "🔔", angle: -150, distance: 110 },
-    { icon: "💬", angle: -45, distance: 120 },
-    { icon: "📱", angle: 150, distance: 110 },
-    { icon: "📧", angle: 45, distance: 120 },
+    { icon: "🔔", angle: -150, distance: 120 },
+    { icon: "💬", angle: -45, distance: 130 },
+    { icon: "📱", angle: 150, distance: 120 },
+    { icon: "📧", angle: 45, distance: 130 },
   ];
 
   return (
     <div className="relative flex h-full items-center justify-center">
-      {/* The book — composed of stacked muted "text lines" */}
       <motion.div
         initial={{ opacity: 0, scale: 0.92, y: 6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.55, ease: "easeOut" }}
         className="relative h-44 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_24px_48px_rgba(15,23,42,0.1)] dark:border-zinc-700 dark:bg-zinc-800"
       >
-        <div className="absolute inset-4 space-y-2">
-          {Array.from({ length: 7 }).map((_, i) => (
+        <div className="absolute left-4 right-4 top-4 flex items-center">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+            <BookOpen className="h-3 w-3" />
+          </span>
+        </div>
+        <div className="absolute inset-x-4 bottom-4 top-12 space-y-2">
+          {[100, 92, 96, 80, 88, 70].map((w, i) => (
             <motion.div
               key={i}
               initial={{ scaleX: 0, opacity: 0 }}
               animate={{ scaleX: 1, opacity: 1 }}
-              transition={{
-                duration: 0.45,
-                delay: 0.3 + i * 0.07,
-                ease: "easeOut",
-              }}
-              style={{
-                width: `${[100, 92, 96, 80, 88, 70, 60][i]}%`,
-                transformOrigin: "left",
-              }}
+              transition={{ duration: 0.45, delay: 0.3 + i * 0.07, ease: "easeOut" }}
+              style={{ width: `${w}%`, transformOrigin: "left" }}
               className="h-1 rounded-full bg-slate-200 dark:bg-zinc-600"
             />
           ))}
         </div>
       </motion.div>
 
-      {/* Distractions: appear, then drift outward + fade */}
       {distractions.map((d, i) => {
         const rad = (d.angle * Math.PI) / 180;
         const x = Math.cos(rad) * d.distance;
@@ -173,13 +172,7 @@ function SceneReading() {
         return (
           <motion.span
             key={i}
-            initial={{
-              opacity: 0,
-              x: x * 0.4,
-              y: y * 0.4,
-              scale: 0.5,
-              rotate: -8,
-            }}
+            initial={{ opacity: 0, x: x * 0.4, y: y * 0.4, scale: 0.5, rotate: -8 }}
             animate={{
               opacity: [0, 1, 1, 0],
               x: [x * 0.4, x * 0.8, x * 1.1, x * 1.6],
@@ -200,35 +193,87 @@ function SceneReading() {
         );
       })}
 
-      {/* Glow that grows around the book as distractions fade */}
       <motion.div
         initial={{ opacity: 0, scale: 0.7 }}
-        animate={{ opacity: [0, 0, 0.55], scale: [0.7, 0.85, 1.15] }}
+        animate={{ opacity: [0, 0, 0.5], scale: [0.7, 0.85, 1.15] }}
         transition={{ duration: 3.6, times: [0, 0.55, 1], ease: "easeOut" }}
         aria-hidden="true"
-        className="pointer-events-none absolute h-44 w-32 rounded-full bg-emerald-400/30 blur-3xl"
+        className="pointer-events-none absolute h-44 w-32 rounded-full bg-emerald-400/25 blur-3xl"
       />
     </div>
   );
 }
 
-// --- Scene 2: timer counts up, pauses, resumes, with status badge ---------
+// ---------------------------------------------------------------------------
+// Scene 2 — writing: LaTeX editor with lines typing + compile sweep
+// ---------------------------------------------------------------------------
 
-function SceneTimer() {
-  const [seconds, setSeconds] = useState(23);
+function SceneWriting() {
+  return (
+    <div className="relative flex h-full items-center justify-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.55, ease: "easeOut" }}
+        className="relative h-44 w-44 overflow-hidden rounded-xl border border-slate-200 bg-slate-950 shadow-[0_24px_48px_rgba(15,23,42,0.18)] dark:border-zinc-700"
+      >
+        <div className="absolute left-4 right-4 top-4 flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-rose-400/80" />
+          <span className="h-2 w-2 rounded-full bg-amber-400/80" />
+          <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
+        </div>
+        <div className="absolute inset-x-4 bottom-4 top-11 space-y-2.5 font-mono">
+          {[
+            { w: 70, c: "bg-indigo-400/80", indent: 0 },
+            { w: 52, c: "bg-slate-500/70", indent: 14 },
+            { w: 88, c: "bg-slate-400/60", indent: 14 },
+            { w: 46, c: "bg-emerald-400/70", indent: 14 },
+            { w: 62, c: "bg-indigo-400/80", indent: 0 },
+          ].map((line, i) => (
+            <motion.div
+              key={i}
+              initial={{ scaleX: 0, opacity: 0 }}
+              animate={{ scaleX: 1, opacity: 1 }}
+              transition={{ duration: 0.35, delay: 0.3 + i * 0.12, ease: "easeOut" }}
+              style={{ width: `${line.w}%`, marginLeft: line.indent, transformOrigin: "left" }}
+              className={`h-1.5 rounded-full ${line.c}`}
+            />
+          ))}
+        </div>
+        <motion.div
+          aria-hidden="true"
+          initial={{ y: "-100%" }}
+          animate={{ y: "120%" }}
+          transition={{ duration: 1.1, delay: 1.2, ease: "easeInOut" }}
+          className="pointer-events-none absolute inset-x-0 h-12 bg-gradient-to-b from-transparent via-indigo-400/25 to-transparent"
+        />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: [0, 0, 0.4], scale: [0.7, 0.85, 1.15] }}
+        transition={{ duration: 3.4, times: [0, 0.55, 1], ease: "easeOut" }}
+        aria-hidden="true"
+        className="pointer-events-none absolute h-44 w-44 rounded-full bg-indigo-400/25 blur-3xl"
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scene 3 — tracking: timer counts up, pauses, resumes, status badge
+// ---------------------------------------------------------------------------
+
+function SceneTracking() {
+  const [seconds, setSeconds] = useState(252);
   const [paused, setPaused] = useState(false);
 
-  // Counter
   useEffect(() => {
     if (paused) return;
-    const id = window.setInterval(
-      () => setSeconds((s) => s + 1),
-      500, // 2× speed so the demo feels alive
-    );
+    const id = window.setInterval(() => setSeconds((s) => s + 1), 500);
     return () => window.clearInterval(id);
   }, [paused]);
 
-  // Demo: pause briefly halfway through to show the gated tracker
   useEffect(() => {
     const t1 = window.setTimeout(() => setPaused(true), 1900);
     const t2 = window.setTimeout(() => setPaused(false), 3000);
@@ -272,9 +317,7 @@ function SceneTimer() {
                 : { scale: [1, 1.5, 1], opacity: [0.6, 1, 0.6] }
             }
             transition={
-              paused
-                ? {}
-                : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }
+              paused ? {} : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }
             }
             className={`h-1.5 w-1.5 rounded-full ${
               paused ? "bg-slate-400 dark:bg-zinc-500" : "bg-emerald-500"
@@ -287,29 +330,43 @@ function SceneTimer() {
   );
 }
 
-// --- Scene 3: achievements unlock one by one with sparkle pops ------------
+// ---------------------------------------------------------------------------
+// Scene 4 — achievements: badges unlock one by one + confetti burst
+// ---------------------------------------------------------------------------
 
 function SceneAchievements() {
   const badges = [
     { emoji: "🌱", gradient: "from-emerald-400 to-teal-500", unlockAt: 300 },
-    { emoji: "🔥", gradient: "from-orange-400 to-rose-500", unlockAt: 900 },
-    { emoji: "⚡", gradient: "from-amber-400 to-yellow-500", unlockAt: 1500 },
-    {
-      emoji: "👑",
-      gradient: "from-violet-500 to-fuchsia-500",
-      unlockAt: 2100,
-    },
+    { emoji: "📚", gradient: "from-sky-400 to-blue-500", unlockAt: 850 },
+    { emoji: "✍️", gradient: "from-indigo-400 to-violet-500", unlockAt: 1400 },
+    { emoji: "🔥", gradient: "from-amber-400 to-orange-500", unlockAt: 1950 },
   ];
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    const t = window.setTimeout(() => {
+      if (typeof window === "undefined") return;
+      void confetti({
+        particleCount: 80,
+        spread: 65,
+        startVelocity: 34,
+        gravity: 0.9,
+        scalar: 0.9,
+        ticks: 150,
+        origin: { x: 0.5, y: 0.6 },
+        colors: ["#10b981", "#6366f1", "#f59e0b", "#ec4899", "#38bdf8"],
+        disableForReducedMotion: true,
+      });
+    }, 2100);
+    return () => window.clearTimeout(t);
+  }, []);
 
   return (
     <div className="flex h-full items-center justify-center gap-3 sm:gap-5">
       {badges.map((b, i) => (
-        <Badge
-          key={i}
-          emoji={b.emoji}
-          gradient={b.gradient}
-          unlockAt={b.unlockAt}
-        />
+        <Badge key={i} emoji={b.emoji} gradient={b.gradient} unlockAt={b.unlockAt} />
       ))}
     </div>
   );
@@ -335,18 +392,11 @@ function Badge({
     <div className="relative">
       <motion.div
         animate={
-          unlocked
-            ? {
-                scale: [1, 1.18, 1],
-                rotate: [0, -4, 4, 0],
-              }
-            : { scale: 1, rotate: 0 }
+          unlocked ? { scale: [1, 1.18, 1], rotate: [0, -4, 4, 0] } : { scale: 1, rotate: 0 }
         }
         transition={{ duration: 0.5, ease: "easeOut" }}
         className={`relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br shadow-[0_12px_24px_rgba(15,23,42,0.12)] transition-colors duration-300 sm:h-16 sm:w-16 ${
-          unlocked
-            ? gradient
-            : "from-slate-200 to-slate-300 dark:from-zinc-800 dark:to-zinc-700"
+          unlocked ? gradient : "from-slate-200 to-slate-300 dark:from-zinc-800 dark:to-zinc-700"
         }`}
       >
         {unlocked ? (
@@ -356,16 +406,11 @@ function Badge({
         )}
       </motion.div>
 
-      {/* Sparkle that pops in on unlock */}
       <AnimatePresence>
         {unlocked && (
           <motion.span
             initial={{ scale: 0, rotate: -30, opacity: 0 }}
-            animate={{
-              scale: [0, 1.3, 1],
-              rotate: [0, 12, 0],
-              opacity: [0, 1, 1],
-            }}
+            animate={{ scale: [0, 1.3, 1], rotate: [0, 12, 0], opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             transition={{ duration: 0.6, ease: [0.22, 1.4, 0.4, 1] }}
             className="absolute -right-1.5 -top-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md dark:bg-zinc-100"
@@ -375,7 +420,6 @@ function Badge({
         )}
       </AnimatePresence>
 
-      {/* Soft halo */}
       {unlocked && (
         <motion.div
           initial={{ opacity: 0 }}

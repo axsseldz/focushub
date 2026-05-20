@@ -18,6 +18,27 @@ export type ReadingSessionDTO = {
   created_at: string;
 };
 
+export type WorkspaceSessionDTO = {
+  id: number;
+  project_id: number | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  created_at: string;
+};
+
+/**
+ * Discriminated session source used by the unified "Recent activity"
+ * list. Reading and workspace rows live in different tables — this
+ * wrapper lets us sort them together while keeping the source visible
+ * for icons, labels, and book/project name lookups.
+ */
+export type SessionSource = "reading" | "workspace";
+
+export type UnifiedSession =
+  | { source: "reading"; session: ReadingSessionDTO }
+  | { source: "workspace"; session: WorkspaceSessionDTO };
+
 export type DailyBucket = {
   /** ISO date in local TZ, e.g. "2026-05-04". Used as a stable key. */
   iso: string;
@@ -25,6 +46,23 @@ export type DailyBucket = {
   date: Date;
   /** Total active seconds for the bucket. */
   seconds: number;
+};
+
+/**
+ * Per-day bucket that keeps reading and workspace seconds separate so a
+ * chart can stack them or a heatmap can sum them without losing the
+ * breakdown.
+ */
+export type DualDailyBucket = {
+  iso: string;
+  date: Date;
+  readingSeconds: number;
+  workspaceSeconds: number;
+};
+
+export type DualSessionLike = {
+  ended_at: string;
+  duration_seconds: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -75,7 +113,7 @@ export function addDays(date: Date, days: number): Date {
  * as the moment the work "landed".
  */
 export function buildDailyBuckets(
-  sessions: readonly ReadingSessionDTO[],
+  sessions: readonly DualSessionLike[],
   days: number,
   endDay: Date = new Date(),
 ): DailyBucket[] {
@@ -104,6 +142,48 @@ export function buildDailyBuckets(
   return buckets;
 }
 
+/**
+ * Same shape as :func:`buildDailyBuckets` but keeps reading and workspace
+ * seconds in their own columns. Used by the stacked-bar chart and the
+ * combined heatmap so analytics can show "writing on top of reading"
+ * without recomputing the bucket grid twice.
+ */
+export function buildDualDailyBuckets(
+  readingSessions: readonly ReadingSessionDTO[],
+  workspaceSessions: readonly WorkspaceSessionDTO[],
+  days: number,
+  endDay: Date = new Date(),
+): DualDailyBucket[] {
+  const end = startOfLocalDay(endDay);
+  const buckets: DualDailyBucket[] = [];
+  const index = new Map<string, DualDailyBucket>();
+
+  for (let i = days - 1; i >= 0; i--) {
+    const day = addDays(end, -i);
+    const bucket: DualDailyBucket = {
+      iso: localISODate(day),
+      date: day,
+      readingSeconds: 0,
+      workspaceSeconds: 0,
+    };
+    buckets.push(bucket);
+    index.set(bucket.iso, bucket);
+  }
+
+  for (const session of readingSessions) {
+    const iso = localISODate(parseBackendDate(session.ended_at));
+    const bucket = index.get(iso);
+    if (bucket) bucket.readingSeconds += session.duration_seconds;
+  }
+  for (const session of workspaceSessions) {
+    const iso = localISODate(parseBackendDate(session.ended_at));
+    const bucket = index.get(iso);
+    if (bucket) bucket.workspaceSeconds += session.duration_seconds;
+  }
+
+  return buckets;
+}
+
 // ---------------------------------------------------------------------------
 // Streak math
 // ---------------------------------------------------------------------------
@@ -111,9 +191,12 @@ export function buildDailyBuckets(
 /**
  * Returns the set of distinct local-TZ dates the user was active on.
  * "Active" means there is at least one session with `duration_seconds > 0`
- * that ended on that day.
+ * that ended on that day. Accepts any source — reading or workspace —
+ * so streak math can be computed from a merged list.
  */
-export function activeDateSet(sessions: readonly ReadingSessionDTO[]): Set<string> {
+export function activeDateSet(
+  sessions: readonly DualSessionLike[],
+): Set<string> {
   const dates = new Set<string>();
   for (const session of sessions) {
     if (session.duration_seconds <= 0) continue;

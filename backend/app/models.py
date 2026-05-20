@@ -193,6 +193,48 @@ class WorkspaceMessage(Base):
     )
 
 
+class WorkspaceSession(Base):
+    """One workspace session = the user actively working on a LaTeX
+    project (typing in the chat or editor, scrolling the PDF, uploading
+    assets, compiling). The frontend tracker mirrors ``ReadingSession``:
+    only seconds where the tab is visible and the user has been recently
+    interactive count.
+
+    ``project_id`` is a plain integer (not a foreign key) so we can keep
+    historical analytics intact if a project is later deleted. The
+    workspace project DELETE route clears matching rows explicitly to
+    keep the per-project sessions list consistent with the user's
+    workspace."""
+
+    __tablename__ = "workspace_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_workspace_sessions_started_at", "started_at"),
+    )
+
+
 class AudioCache(Base):
     """Persistent cache of ElevenLabs-generated narration.
 

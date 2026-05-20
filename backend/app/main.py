@@ -9,6 +9,7 @@ from app.routes.audio import router as audio_router
 from app.routes.files import router as files_router
 from app.routes.sessions import router as sessions_router
 from app.routes.workspace import router as workspace_router
+from app.routes.workspace_sessions import router as workspace_sessions_router
 from app.settings import settings
 
 
@@ -34,6 +35,7 @@ app.include_router(files_router)
 app.include_router(sessions_router)
 app.include_router(audio_router)
 app.include_router(workspace_router)
+app.include_router(workspace_sessions_router)
 
 # Sirve los MP3 cacheados directamente. Permite reproducir audios ya
 # generados sin pasar por el endpoint de streaming (útil para repetir

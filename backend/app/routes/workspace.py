@@ -27,7 +27,13 @@ from app.latex_compile import (
     TectonicMissingError,
     compile_latex_to_pdf,
 )
-from app.models import File, WorkspaceAsset, WorkspaceMessage, WorkspaceProject
+from app.models import (
+    File,
+    WorkspaceAsset,
+    WorkspaceMessage,
+    WorkspaceProject,
+    WorkspaceSession,
+)
 from app.openai_client import (
     AssetInfo,
     ChatTurn,
@@ -187,6 +193,13 @@ def delete_project(
     )
     db.execute(
         delete(WorkspaceAsset).where(WorkspaceAsset.project_id == project.id),
+    )
+    # Workspace sessions reference project_id loosely (no FK) so we drop
+    # them here explicitly. Analytics stays consistent with the user's
+    # current workspace, matching how reading sessions behave when a book
+    # is deleted.
+    db.execute(
+        delete(WorkspaceSession).where(WorkspaceSession.project_id == project.id),
     )
     db.delete(project)
     db.commit()

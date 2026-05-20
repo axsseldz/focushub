@@ -149,6 +149,13 @@ def ensure_database_schema() -> None:
                     text("ALTER TABLE workspace_assets ADD COLUMN text_excerpt VARCHAR"),
                 )
 
+        if "workspace_sessions" in tables:
+            # Future-proofing: workspace_sessions is a new table created
+            # via ``Base.metadata.create_all`` at startup, so no column
+            # back-fills are needed today. The hook is here for symmetry
+            # with reading_sessions and to make future additions trivial.
+            pass
+
         if "reading_sessions" in tables:
             columns = {
                 column["name"]
